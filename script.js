@@ -8,6 +8,8 @@ const SECURITY_NOTE =
   "Por seguridad, no compartas documentos, contraseñas ni datos bancarios en este formulario. Si hace falta revisar algo específico, lo vemos después por un medio adecuado.";
 const FINISH_DEFAULT_MESSAGE =
   "Revisaré tus respuestas y me pondré en contacto contigo para orientarte según tu objetivo inmobiliario.";
+const PRIVACY_CONSENT_TEXT =
+  "Acepto que Erick Ehecatl Carro Milian, asesor inmobiliario vinculado con Century 21 Edyfico, me contacte por los medios proporcionados para dar seguimiento a mi solicitud inmobiliaria. He leído y acepto el Aviso de Privacidad.";
 
 const PROPERTY_OPTIONS = [
   ["casa", "Casa"],
@@ -585,6 +587,10 @@ const stateBuckets = {
   investmentDetails,
   landDetails,
 };
+const sessionId = generateLeadId().replace("lead_", "session_");
+const firstPageUrl = window.location.href;
+let currentLeadPayload = null;
+let currentLeadSubmission = null;
 let currentIndex = 0;
 let isFinished = false;
 let formStartedAt = 0;
@@ -629,6 +635,145 @@ const LAND_REVIEW_CHECKS = [
   "Revisar viabilidad del proyecto",
   "Revisar acceso y servicios",
 ];
+const STAGE_SCORE = {
+  avanzar_pronto: 25,
+  idea_clara: 18,
+  comparar: 10,
+  comparar_opciones: 10,
+  asesoria_antes: 8,
+  asesoria_antes_decidir: 8,
+  explorando: 5,
+};
+const OBJECTIVE_SCORE = {
+  comprar: 15,
+  vender: 18,
+  poner_renta: 15,
+  invertir: 14,
+  rentar: 10,
+  valuacion: 12,
+  orientacion: 6,
+};
+const TIME_SCORE_GROUPS = [
+  {
+    values: new Set(["urgente", "lo_antes_posible", "este_mes", "inmediato", "esta_semana"]),
+    score: 25,
+    reason: "Tiempo de atención inmediato o este mes.",
+  },
+  {
+    values: new Set(["uno_tres_meses", "1_3_meses", "0_3_meses", "pronto", "corto"]),
+    score: 18,
+    reason: "Tiempo de decisión cercano.",
+  },
+  {
+    values: new Set(["tres_seis_meses", "3_6_meses", "medio"]),
+    score: 10,
+    reason: "Tiempo de decisión medio.",
+  },
+  {
+    values: new Set([
+      "solo_explorando",
+      "mas_adelante",
+      "sin_prisa",
+      "sin_fecha",
+      "6_12_meses",
+      "largo",
+      "patrimonial",
+    ]),
+    score: 4,
+    reason: "Tiempo de decisión exploratorio o sin prisa.",
+  },
+];
+const PAYMENT_SCORE = {
+  recurso_propio: 18,
+  recursos_propios: 18,
+  credito_bancario: 15,
+  infonavit: 12,
+  fovissste: 12,
+  infonavit_fovissste: 12,
+  orientacion_credito: 8,
+  necesito_orientacion: 8,
+  no_se: 3,
+};
+const BUDGET_FIELD_IDS = [
+  "comprar_presupuesto",
+  "rentar_presupuesto",
+  "invertir_monto",
+  "vender_precio",
+  "poner_renta_precio",
+  "valuacion_precio",
+];
+const PAYMENT_FIELD_IDS = ["comprar_pago"];
+const TIME_FIELD_IDS = [
+  "tiempo",
+  "comprar_tiempo",
+  "vender_tiempo",
+  "renta_tiempo",
+  "rentar_tiempo",
+  "invertir_tiempo",
+  "invertir_horizonte",
+  "valuacion_motivo",
+  "urgencia",
+  "poner_renta_urgencia",
+  "orientacion_tiempo",
+];
+const NEED_FIELD_IDS = [
+  "prioridad",
+  "comprar_necesidades",
+  "rentar_necesidades",
+  "invertir_factores",
+  "orientacion_top_prioridades",
+  "poner_renta_preocupaciones",
+  "comprar_terreno_servicios",
+  "vender_terreno_servicios",
+  "valuacion_terreno_servicios",
+];
+const CONTACT_PREFERENCE_FIELDS = [
+  "medio_contacto",
+  "vender_disposicion",
+  "poner_renta_disposicion",
+];
+const PROPERTY_TYPE_FIELD_IDS = [
+  "comprar_tipo",
+  "vender_tipo",
+  "rentar_tipo",
+  "poner_renta_tipo",
+  "valuacion_tipo",
+  "invertir_tipo",
+];
+const LOCATION_FIELD_IDS = [
+  "comprar_zona",
+  "vender_zona",
+  "rentar_zona",
+  "poner_renta_ubicacion",
+  "invertir_zona",
+  "valuacion_ubicacion",
+  "orientacion_zona",
+];
+const SIZE_FIELD_IDS = [
+  "comprar_tamano",
+  "vender_tamano",
+  "valuacion_tamano",
+  "comprar_terreno_superficie",
+  "vender_terreno_superficie",
+  "valuacion_terreno_superficie",
+];
+const CONDITION_FIELD_IDS = ["vender_estado", "poner_renta_estado", "valuacion_estado"];
+const OCCUPANCY_FIELD_IDS = ["vender_ocupacion", "poner_renta_ocupacion", "valuacion_ocupacion"];
+const PRICE_BASIS_FIELD_IDS = [
+  "vender_precio_base",
+  "poner_renta_precio_base",
+  "valuacion_precio_base",
+];
+const DOCUMENTATION_FIELD_IDS = ["vender_documentos", "valuacion_documentos"];
+const MOTIVATION_FIELD_IDS = [
+  "vender_motivo",
+  "valuacion_motivo",
+  "invertir_objetivo",
+  "invertir_meta",
+  "orientacion_interes",
+  "orientacion_preocupacion",
+];
+const CRM_DISABLED_MODE = "disabled";
 const allRouteQuestionIds = [
   ...new Set([
     ...Object.values(routeQuestions).flatMap((route) => route.flatMap(getQuestionIds)),
@@ -823,6 +968,688 @@ function formatCopy(copy) {
 
 function getQuestionLabel(question) {
   return formatCopy(question.summaryTitle || question.title);
+}
+
+function generateLeadId() {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 8);
+  return `lead_${timestamp}_${random}`;
+}
+
+function getUtmParams() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    source: sanitizeText(params.get("utm_source") || "", 120),
+    medium: sanitizeText(params.get("utm_medium") || "", 120),
+    campaign: sanitizeText(params.get("utm_campaign") || "", 160),
+    content: sanitizeText(params.get("utm_content") || "", 160),
+    term: sanitizeText(params.get("utm_term") || "", 160),
+  };
+}
+
+function getStateAnswer(state, id) {
+  return state?.[id] || null;
+}
+
+function sanitizePayloadValue(value, maxLength = OPEN_FIELD_MAX_LENGTH) {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeText(item, 120)).filter(Boolean);
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value;
+  }
+
+  return sanitizeText(value, maxLength);
+}
+
+function getStateValue(state, id) {
+  return sanitizePayloadValue(getStateAnswer(state, id)?.value);
+}
+
+function getStateLabel(state, id) {
+  return sanitizeText(getStateAnswer(state, id)?.label || "", OPEN_FIELD_MAX_LENGTH);
+}
+
+function getFirstStateValue(state, ids) {
+  for (const id of ids) {
+    const value = getStateValue(state, id);
+    if (Array.isArray(value) ? value.length : value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function getFirstStateLabel(state, ids) {
+  for (const id of ids) {
+    const label = getStateLabel(state, id);
+    if (label && label !== "No proporcionado") {
+      return label;
+    }
+  }
+
+  return "";
+}
+
+function getMultiAnswerLabels(state, ids) {
+  const labels = [];
+
+  ids.forEach((id) => {
+    const answer = getStateAnswer(state, id);
+    if (!answer) {
+      return;
+    }
+
+    if (Array.isArray(answer.value)) {
+      String(answer.label || "")
+        .split(",")
+        .map((item) => sanitizeText(item, 120))
+        .filter(Boolean)
+        .forEach((item) => addUnique(labels, item));
+      return;
+    }
+
+    const label = getStateLabel(state, id);
+    if (label && label !== "No proporcionado") {
+      addUnique(labels, label);
+    }
+  });
+
+  return labels;
+}
+
+function hasAnyStateAnswer(state, ids) {
+  return ids.some((id) => {
+    const value = getStateValue(state, id);
+    return Array.isArray(value) ? value.length > 0 : Boolean(value);
+  });
+}
+
+function addUnique(list, value) {
+  const cleaned = sanitizeText(value, OPEN_FIELD_MAX_LENGTH);
+  if (cleaned && !list.includes(cleaned)) {
+    list.push(cleaned);
+  }
+}
+
+function raiseRiskLevel(currentLevel, nextLevel) {
+  const order = { bajo: 1, medio: 2, alto: 3 };
+  return order[nextLevel] > order[currentLevel] ? nextLevel : currentLevel;
+}
+
+function getTemperature(score) {
+  if (score >= 80) {
+    return {
+      temperatura: "Lead caliente",
+      urgencia: "Alta",
+      etapaPipeline: "Cita por agendar",
+      accionRecomendada:
+        "Contactar en menos de 15 minutos, validar necesidad y proponer llamada o cita.",
+    };
+  }
+
+  if (score >= 60) {
+    return {
+      temperatura: "Lead tibio alto",
+      urgencia: "Media alta",
+      etapaPipeline: "Contactar hoy",
+      accionRecomendada: "Contactar hoy, resolver dudas y llevarlo a una llamada breve.",
+    };
+  }
+
+  if (score >= 40) {
+    return {
+      temperatura: "Lead tibio",
+      urgencia: "Media",
+      etapaPipeline: "En seguimiento",
+      accionRecomendada: "Enviar mensaje amable, resolver dudas y nutrir seguimiento.",
+    };
+  }
+
+  return {
+    temperatura: "Lead frío",
+    urgencia: "Baja",
+    etapaPipeline: "Nutrición",
+    accionRecomendada: "Dar seguimiento suave y guardar para nutrición.",
+  };
+}
+
+function getTimeScore(state) {
+  let bestMatch = { score: 0, reason: "" };
+
+  TIME_FIELD_IDS.forEach((id) => {
+    const value = getStateValue(state, id);
+    if (!value || Array.isArray(value)) {
+      return;
+    }
+
+    TIME_SCORE_GROUPS.forEach((group) => {
+      if (group.values.has(value) && group.score > bestMatch.score) {
+        bestMatch = { score: group.score, reason: group.reason };
+      }
+    });
+  });
+
+  return bestMatch;
+}
+
+function hasBudgetOrPrice(state) {
+  return BUDGET_FIELD_IDS.some((id) => {
+    const value = getStateValue(state, id);
+    return Boolean(value && !["por_definir", "no", "necesito_valuacion"].includes(value));
+  });
+}
+
+function getPaymentScore(state) {
+  for (const id of PAYMENT_FIELD_IDS) {
+    const value = getStateValue(state, id);
+    if (value && PAYMENT_SCORE[value]) {
+      return {
+        score: PAYMENT_SCORE[value],
+        reason: `Forma de pago clara: ${getStateLabel(state, id)}.`,
+      };
+    }
+  }
+
+  return { score: 0, reason: "" };
+}
+
+function getPreferredContactScore(state) {
+  const values = CONTACT_PREFERENCE_FIELDS.map((id) => getStateValue(state, id)).filter(Boolean);
+
+  if (values.some((value) => ["llamada", "cita", "flexible", "cualquiera"].includes(value))) {
+    return { score: 15, reason: "Acepta llamada o cita para seguimiento." };
+  }
+
+  if (values.includes("whatsapp")) {
+    return { score: 8, reason: "Prefiere seguimiento por WhatsApp." };
+  }
+
+  return { score: 0, reason: "" };
+}
+
+function getNeedsCount(state) {
+  return getMultiAnswerLabels(state, NEED_FIELD_IDS).length;
+}
+
+function isCaptureObjective(objective) {
+  return ["vender", "poner_renta", "valuacion"].includes(objective);
+}
+
+function wantsFastFollowUp(state) {
+  return (
+    getStateValue(state, "etapa") === "avanzar_pronto" ||
+    ["urgente", "inmediato", "este_mes", "esta_semana"].includes(getTimeUrgencyValue(state))
+  );
+}
+
+function getTimeUrgencyValue(state) {
+  for (const id of TIME_FIELD_IDS) {
+    const value = getStateValue(state, id);
+    if (value && !Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function wantsListingAppointment(state) {
+  return CONTACT_PREFERENCE_FIELDS.some((id) =>
+    ["llamada", "cita", "flexible", "cualquiera"].includes(getStateValue(state, id))
+  );
+}
+
+function hasPriceInMind(state) {
+  return ["vender_precio", "poner_renta_precio", "valuacion_precio"].some((id) =>
+    ["si", "aproximado", "aproximada", "quiero_validarlo", "quiero_validar"].includes(
+      getStateValue(state, id)
+    )
+  );
+}
+
+function hasHighRiskLand(state) {
+  const legalSituation = getFirstStateValue(state, [
+    "comprar_terreno_situacion",
+    "vender_terreno_situacion",
+    "valuacion_terreno_situacion",
+  ]);
+  return (
+    HIGH_RISK_LAND_STATUS.has(legalSituation) ||
+    getStateAnswer(state, "requiere_revision_profesional")?.value === true
+  );
+}
+
+function isLandIntake(state) {
+  const propertyType = getFirstStateValue(state, PROPERTY_TYPE_FIELD_IDS);
+  return propertyType === "terreno" || hasAnyStateAnswer(state, [
+    "comprar_terreno_superficie",
+    "vender_terreno_superficie",
+    "valuacion_terreno_superficie",
+    "comprar_terreno_situacion",
+    "vender_terreno_situacion",
+    "valuacion_terreno_situacion",
+  ]);
+}
+
+function calculateLeadScore(state) {
+  let score = 0;
+  const razonCalificacion = [];
+  const addScore = (points, reason) => {
+    if (points > 0) {
+      score += points;
+      addUnique(razonCalificacion, reason);
+    }
+  };
+  const objective = getStateValue(state, "objetivo");
+  const etapa = getStateValue(state, "etapa");
+  const stageScore = STAGE_SCORE[etapa] || 0;
+  const objectiveScore = OBJECTIVE_SCORE[objective] || 0;
+  const timeScore = getTimeScore(state);
+  const paymentScore = getPaymentScore(state);
+  const contactPreferenceScore = getPreferredContactScore(state);
+  const needsCount = getNeedsCount(state);
+
+  addScore(stageScore, `Etapa declarada: ${getStateLabel(state, "etapa")}.`);
+  addScore(objectiveScore, `Objetivo inmobiliario: ${getStateLabel(state, "objetivo")}.`);
+  addScore(timeScore.score, timeScore.reason);
+
+  if (hasBudgetOrPrice(state)) {
+    addScore(12, "Tiene presupuesto, precio o renta estimada como punto de partida.");
+  }
+
+  addScore(paymentScore.score, paymentScore.reason);
+
+  if (getPhoneDigits(getStateValue(state, "whatsapp")).length >= 10) {
+    addScore(10, "WhatsApp válido para seguimiento.");
+  }
+
+  if (getStateValue(state, "ciudad")) {
+    addScore(6, "Ciudad definida.");
+  }
+
+  if (getStateValue(state, "horario_contacto")) {
+    addScore(5, "Horario preferido definido.");
+  }
+
+  addScore(contactPreferenceScore.score, contactPreferenceScore.reason);
+
+  if (isCaptureObjective(objective)) {
+    const documentationValue = getFirstStateValue(state, DOCUMENTATION_FIELD_IDS);
+    if (["en_regla", "si"].includes(documentationValue)) {
+      addScore(15, "Documentación declarada como disponible o en regla.");
+    }
+
+    if (wantsFastFollowUp(state)) {
+      addScore(15, "Quiere avanzar pronto en una operación de captación o valoración.");
+    }
+
+    if (hasPriceInMind(state)) {
+      addScore(6, "Tiene precio o renta estimada en mente.");
+    }
+
+    if (wantsListingAppointment(state)) {
+      addScore(20, "Acepta llamada o cita para revisar la propiedad.");
+    }
+  }
+
+  if (needsCount >= 2) {
+    addScore(8, "Seleccionó dos o tres prioridades.");
+  } else if (needsCount === 1) {
+    addScore(5, "Seleccionó una prioridad relevante.");
+  }
+
+  score = Math.min(score, 100);
+  const qualification = getTemperature(score);
+
+  if (objective === "vender" && wantsFastFollowUp(state)) {
+    qualification.accionRecomendada =
+      "Contactar cuanto antes y proponer llamada o visita de captación.";
+  }
+
+  if (objective === "vender" && getStateAnswer(state, "precio_requiere_validacion")?.value === true) {
+    addUnique(razonCalificacion, "Precio requiere validación de mercado antes de publicar.");
+  }
+
+  if (
+    objective === "poner_renta" &&
+    getStateAnswer(state, "renta_requiere_validacion")?.value === true
+  ) {
+    addUnique(razonCalificacion, "Renta estimada requiere validación de mercado.");
+  }
+
+  if (isLandIntake(state) && hasHighRiskLand(state)) {
+    addUnique(
+      razonCalificacion,
+      "Terreno requiere revisión especial de régimen, uso y viabilidad."
+    );
+  }
+
+  return {
+    score,
+    temperatura: qualification.temperatura,
+    urgencia: qualification.urgencia,
+    accionRecomendada: qualification.accionRecomendada,
+    etapaPipeline: qualification.etapaPipeline,
+    razonCalificacion,
+  };
+}
+
+function buildPriceMindset(state) {
+  const estimatedPriceBasis = getFirstStateLabel(state, ["vender_precio_base", "valuacion_precio_base"]);
+  const basisValue = getFirstStateValue(state, ["vender_precio_base", "valuacion_precio_base"]);
+  const hasEstimatedPrice = hasAnyStateAnswer(state, ["vender_precio", "valuacion_precio"]);
+  const needsMarketValidation =
+    getStateAnswer(state, "precio_requiere_validacion")?.value === true ||
+    UNCLEAR_PRICE_BASIS.has(basisValue);
+
+  return {
+    hasEstimatedPrice,
+    estimatedPriceBasis,
+    needsMarketValidation,
+    note: needsMarketValidation
+      ? "Tener un precio en mente es buen inicio, pero conviene validarlo con mercado."
+      : "",
+  };
+}
+
+function buildRentMindset(state) {
+  const estimatedRentBasis = getStateLabel(state, "poner_renta_precio_base");
+  const basisValue = getStateValue(state, "poner_renta_precio_base");
+  const hasEstimatedRent = hasAnyStateAnswer(state, ["poner_renta_precio"]);
+  const needsMarketValidation =
+    getStateAnswer(state, "renta_requiere_validacion")?.value === true ||
+    UNCLEAR_PRICE_BASIS.has(basisValue);
+
+  return {
+    hasEstimatedRent,
+    estimatedRentBasis,
+    needsMarketValidation,
+    note: needsMarketValidation
+      ? "La renta estimada conviene validarla con mercado, zona, estado del inmueble y perfil del inquilino."
+      : "",
+  };
+}
+
+function buildLandDetails(state) {
+  const requiresLandReview = isLandIntake(state) && hasHighRiskLand(state);
+  const accessAndServices = getMultiAnswerLabels(state, [
+    "comprar_terreno_servicios",
+    "vender_terreno_servicios",
+    "valuacion_terreno_servicios",
+  ]);
+
+  return {
+    areaRange: getFirstStateLabel(state, [
+      "comprar_terreno_superficie",
+      "vender_terreno_superficie",
+      "valuacion_terreno_superficie",
+    ]),
+    intendedUse: getFirstStateLabel(state, [
+      "comprar_terreno_uso",
+      "vender_terreno_uso",
+      "valuacion_terreno_uso",
+    ]),
+    legalSituation: getFirstStateLabel(state, [
+      "comprar_terreno_situacion",
+      "vender_terreno_situacion",
+      "valuacion_terreno_situacion",
+    ]),
+    accessAndServices,
+    generalLocation: getFirstStateLabel(state, LOCATION_FIELD_IDS),
+    requiresLandReview,
+    landReviewNotes: requiresLandReview ? [...LAND_REVIEW_CHECKS] : [],
+  };
+}
+
+function buildInternalReviewNotes(state) {
+  const objective = getStateValue(state, "objetivo");
+  const review = {
+    riskLevel: "bajo",
+    reviewStatus: "pendiente",
+    legalFlags: [],
+    commercialFlags: [],
+    recommendedChecks: [],
+    advisorNotes: [],
+    nextAction: "",
+    requiresProfessionalReview: false,
+  };
+  const raiseRisk = (level) => {
+    review.riskLevel = raiseRiskLevel(review.riskLevel, level);
+  };
+  const addCheck = (value) => addUnique(review.recommendedChecks, value);
+  const addLegalFlag = (value) => addUnique(review.legalFlags, value);
+  const addCommercialFlag = (value) => addUnique(review.commercialFlags, value);
+  const addAdvisorNote = (value) => addUnique(review.advisorNotes, value);
+  const documentationValue = getFirstStateValue(state, DOCUMENTATION_FIELD_IDS);
+  const occupancyValue = getFirstStateValue(state, OCCUPANCY_FIELD_IDS);
+  const priceMindset = buildPriceMindset(state);
+  const rentMindset = buildRentMindset(state);
+  const textCorpus = Object.keys(state)
+    .map((id) => `${id} ${getStateLabel(state, id)} ${String(getStateValue(state, id))}`)
+    .join(" ")
+    .toLowerCase();
+
+  if (objective === "vender") {
+    if (documentationValue === "en_regla") {
+      addCheck("Confirmar documentación antes de publicar");
+      addCheck("Revisar libertad de gravamen antes de formalizar");
+    } else {
+      raiseRisk("medio");
+      addCheck("Revisar escritura");
+      addCheck("Revisar predial");
+      addCheck("Revisar agua/servicios");
+      addCheck("Revisar titularidad");
+      addCheck("Revisar libertad de gravamen antes de avanzar");
+    }
+  }
+
+  if (["vender", "valuacion"].includes(objective) && documentationValue && documentationValue !== "en_regla" && documentationValue !== "si") {
+    raiseRisk("medio");
+    addCheck("Revisar documentación disponible antes de avanzar");
+  }
+
+  if (occupancyValue === "rentada") {
+    raiseRisk("medio");
+    addLegalFlag("Propiedad ocupada por arrendatario");
+    addCheck("Revisar contrato de arrendamiento");
+    addCheck("Confirmar plazo y condiciones de entrega");
+  }
+
+  if (/(sucesi[oó]n|herencia|juicio|embargo|copropiedad|intestado|posesi[oó]n|ejidal|comunal)/i.test(textCorpus)) {
+    raiseRisk("alto");
+    review.requiresProfessionalReview = true;
+    addLegalFlag("Posible situación jurídica sensible");
+    addCheck("Revisar titularidad y facultades para disponer");
+    addCheck("Recomendar revisión profesional antes de promover");
+  }
+
+  if (priceMindset.needsMarketValidation) {
+    addCommercialFlag("Precio requiere validación de mercado");
+    addCheck("Revisar comparables");
+    addCheck("Revisar zona, estado, demanda y competencia");
+    addAdvisorNote(
+      "Educar con tacto: tener precio en mente es buen inicio, pero conviene validarlo"
+    );
+  }
+
+  if (objective === "poner_renta") {
+    const rentConcerns = getStateValue(state, "poner_renta_preocupaciones");
+    if (rentMindset.needsMarketValidation) {
+      addCommercialFlag("Renta estimada requiere validación de mercado");
+      addCheck("Comparar rentas similares");
+      addCheck("Revisar perfil de inquilino y demanda");
+    }
+
+    if (
+      Array.isArray(rentConcerns) &&
+      rentConcerns.some((value) => ["pago", "contrato", "mantenimiento"].includes(value))
+    ) {
+      addCommercialFlag("Propietario preocupado por riesgo de inquilino");
+      addCheck("Reforzar filtro de prospectos");
+      addCheck("Revisar contrato");
+      addCheck("Validar garantías, depósito o referencias según práctica permitida");
+    }
+  }
+
+  if (isLandIntake(state)) {
+    addCheck("Revisar uso de suelo");
+    addCheck("Revisar medidas y colindancias");
+    addCheck("Revisar situación catastral");
+    addCheck("Revisar acceso y servicios");
+  }
+
+  if (isLandIntake(state) && hasHighRiskLand(state)) {
+    raiseRisk("alto");
+    review.requiresProfessionalReview = true;
+    addLegalFlag("Terreno requiere revisión especial de régimen de propiedad");
+    addCheck("Revisar régimen de propiedad");
+    addCheck("Revisar viabilidad del proyecto");
+    addCheck("Revisión profesional recomendada antes de promover");
+  }
+
+  if (review.riskLevel === "alto") {
+    review.nextAction = "Validar documentación y situación jurídica antes de promover.";
+  } else if (["vender", "poner_renta", "valuacion"].includes(objective)) {
+    review.nextAction = "Contactar para validar estrategia de captación o valoración.";
+  } else {
+    review.nextAction = "Contactar para seguimiento inicial.";
+  }
+
+  return review;
+}
+
+function buildRouteResponses(state, route) {
+  const routeIds = (routeQuestions[route] || []).flatMap(getQuestionIds);
+  return routeIds.reduce((payload, id) => {
+    const answer = getStateAnswer(state, id);
+    if (!answer || answer.internal) {
+      return payload;
+    }
+
+    const value = sanitizePayloadValue(answer.value);
+    if (Array.isArray(value) ? value.length : value || typeof value === "boolean") {
+      payload[id] = {
+        value,
+        label: sanitizeText(answer.label || "", OPEN_FIELD_MAX_LENGTH),
+      };
+    }
+
+    return payload;
+  }, {});
+}
+
+function buildPropertyIntake(state, qualification) {
+  return {
+    operation: getStateValue(state, "objetivo"),
+    propertyType: getFirstStateLabel(state, PROPERTY_TYPE_FIELD_IDS),
+    generalLocation: getFirstStateLabel(state, LOCATION_FIELD_IDS),
+    approximateSize: getFirstStateLabel(state, SIZE_FIELD_IDS),
+    condition: getFirstStateLabel(state, CONDITION_FIELD_IDS),
+    occupancy: getFirstStateLabel(state, OCCUPANCY_FIELD_IDS),
+    estimatedPriceOrRent: getFirstStateLabel(state, BUDGET_FIELD_IDS),
+    priceBasis: getFirstStateLabel(state, PRICE_BASIS_FIELD_IDS),
+    documentationDeclared: getMultiAnswerLabels(state, DOCUMENTATION_FIELD_IDS),
+    urgency: getFirstStateLabel(state, TIME_FIELD_IDS),
+    motivation: getFirstStateLabel(state, MOTIVATION_FIELD_IDS),
+    wantsListingAppointment: getFirstStateLabel(state, CONTACT_PREFERENCE_FIELDS),
+    feasibilityScore: qualification.score,
+    feasibilityLevel: qualification.temperatura,
+    recommendedListingAction: qualification.accionRecomendada,
+  };
+}
+
+function buildLeadPayload(state) {
+  const createdAt = new Date().toISOString();
+  const route = getStateValue(state, "objetivo");
+  const qualification = calculateLeadScore(state);
+  const priceMindset = buildPriceMindset(state);
+  const rentMindset = buildRentMindset(state);
+  const internalReview = buildInternalReviewNotes(state);
+
+  return {
+    leadId: generateLeadId(),
+    createdAt,
+    source: "landing-ehecatl-milian",
+    pageUrl: sanitizeText(window.location.href, 500),
+    utm: getUtmParams(),
+    contact: {
+      nombre: getStateLabel(state, "nombre"),
+      whatsapp: getStateValue(state, "whatsapp"),
+      ciudad: getStateLabel(state, "ciudad"),
+      correo: getStateValue(state, "correo"),
+      medioPreferido: getStateLabel(state, "medio_contacto"),
+      horarioPreferido: getStateLabel(state, "horario_contacto"),
+    },
+    answers: {
+      objetivo: getStateValue(state, "objetivo"),
+      etapa: getStateValue(state, "etapa"),
+      prioridad: getStateValue(state, "prioridad"),
+      ruta: route,
+      respuestasRuta: buildRouteResponses(state, route),
+    },
+    preferences: {
+      topNeeds: getMultiAnswerLabels(state, NEED_FIELD_IDS),
+      maxNeedsAllowed: MAX_MULTI_SELECT,
+    },
+    propertyIntake: buildPropertyIntake(state, qualification),
+    priceMindset,
+    rentMindset,
+    landDetails: buildLandDetails(state),
+    qualification,
+    internalReview,
+    recommendedProperties: [],
+    metrics: {
+      sessionId,
+      firstPageUrl: sanitizeText(firstPageUrl, 500),
+      referrer: sanitizeText(document.referrer || "", 500),
+      formStartedAt: formStartedAt ? new Date(formStartedAt).toISOString() : "",
+      formCompletedAt: createdAt,
+      timeToCompleteSeconds: formStartedAt
+        ? String(Math.max(0, Math.round((Date.now() - formStartedAt) / 1000)))
+        : "",
+    },
+    consent: {
+      acceptedPrivacy: getStateAnswer(state, "consentimiento")?.value === true,
+      privacyText: PRIVACY_CONSENT_TEXT,
+    },
+    shortWhatsAppMessage: buildWhatsappMessage(state),
+  };
+}
+
+function submitLead(leadPayload) {
+  const contact = leadPayload?.contact || {};
+  const hasValidPhone = getPhoneDigits(contact.whatsapp).length >= 10;
+
+  if (!leadPayload?.consent?.acceptedPrivacy) {
+    return { ok: false, mode: CRM_DISABLED_MODE, reason: "missing_consent" };
+  }
+
+  if (!sanitizeText(contact.nombre, 80)) {
+    return { ok: false, mode: CRM_DISABLED_MODE, reason: "missing_name" };
+  }
+
+  if (!hasValidPhone) {
+    return { ok: false, mode: CRM_DISABLED_MODE, reason: "invalid_whatsapp" };
+  }
+
+  if (!sanitizeText(contact.ciudad, 100)) {
+    return { ok: false, mode: CRM_DISABLED_MODE, reason: "missing_city" };
+  }
+
+  return { ok: true, mode: CRM_DISABLED_MODE };
+}
+
+function prepareLeadPayload() {
+  currentLeadPayload = buildLeadPayload(answers);
+  currentLeadSubmission = submitLead(currentLeadPayload);
+  return currentLeadSubmission.ok;
 }
 
 function renderQuestion() {
@@ -1188,6 +2015,9 @@ function validateAndStore(question) {
 }
 
 function validateFieldAndStore(question) {
+  currentLeadPayload = null;
+  currentLeadSubmission = null;
+
   if (question.type === "choice") {
     const checked = form.querySelector(`input[name="${question.id}"]:checked`);
     if (!checked) {
@@ -1391,6 +2221,8 @@ function clearRouteAnswers() {
     delete answers[id];
   });
   resetRouteState();
+  currentLeadPayload = null;
+  currentLeadSubmission = null;
 }
 
 function showFinish() {
@@ -1399,6 +2231,13 @@ function showFinish() {
     currentIndex = firstMissingIndex;
     renderQuestion();
     showError("Revisa esta respuesta para poder continuar con seguridad.");
+    return;
+  }
+
+  if (!prepareLeadPayload()) {
+    currentIndex = Math.max(0, getFlow().length - 1);
+    renderQuestion();
+    showError("Revisa tus datos de contacto y consentimiento antes de continuar.");
     return;
   }
 
@@ -1418,11 +2257,11 @@ function buildWhatsappUrl(message) {
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
-function buildWhatsappMessage() {
-  const name = sanitizeText(answers.nombre?.label || "", 80) || "gracias";
-  const objective = answers.objetivo?.value;
-  const etapa = answers.etapa?.value;
-  const venderTiempo = answers.vender_tiempo?.value;
+function buildWhatsappMessage(state = answers) {
+  const name = sanitizeText(getStateLabel(state, "nombre") || "", 80) || "gracias";
+  const objective = getStateValue(state, "objetivo");
+  const etapa = getStateValue(state, "etapa");
+  const venderTiempo = getStateValue(state, "vender_tiempo");
   const wantsToMoveSoon = etapa === "avanzar_pronto" || venderTiempo === "urgente";
 
   if (objective === "vender" && wantsToMoveSoon) {
@@ -1489,11 +2328,16 @@ sendWhatsappButton.addEventListener("click", () => {
     return;
   }
 
+  if (!currentLeadPayload && !prepareLeadPayload()) {
+    showError("Revisa tus datos de contacto y consentimiento antes de abrir WhatsApp.");
+    return;
+  }
+
   whatsappUnlockAt = now + WHATSAPP_SEND_LOCK_MS;
   sendWhatsappButton.disabled = true;
   sendWhatsappButton.textContent = "Abriendo WhatsApp...";
   finishMessage.textContent = FINISH_DEFAULT_MESSAGE;
-  openWhatsappWithMessage(buildWhatsappMessage());
+  openWhatsappWithMessage(currentLeadPayload.shortWhatsAppMessage || buildWhatsappMessage());
   window.setTimeout(() => {
     sendWhatsappButton.disabled = false;
     sendWhatsappButton.textContent = "Enviar por WhatsApp";

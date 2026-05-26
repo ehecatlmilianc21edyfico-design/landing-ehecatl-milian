@@ -77,6 +77,16 @@ Protecciones actuales:
 
 Consulta `SECURITY.md` para límites y recomendaciones de fase 2.
 
+## Lead payload y CRM
+
+Al completar el formulario, `script.js` construye en memoria un `leadPayload` preparado para CRM. Incluye contacto, respuestas ordenadas, UTM, score interno, temperatura, urgencia, etapa inicial de pipeline, acción recomendada y notas internas de revisión.
+
+El envío a CRM todavía está desactivado: `submitLead(leadPayload)` solo valida datos mínimos y devuelve `{ ok: true, mode: "disabled" }`. No se conecta a Make, Airtable ni ningún endpoint real.
+
+El score y las notas internas no se muestran al usuario. El WhatsApp final se mantiene corto y humano.
+
+Próximo paso sugerido: conectar `submitLead()` a Make, Airtable u otro backend seguro sin poner secretos en el frontend.
+
 ## Publicar en GitHub Pages
 
 1. Sube estos archivos a un repositorio de GitHub.
