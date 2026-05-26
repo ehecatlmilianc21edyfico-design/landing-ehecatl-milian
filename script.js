@@ -1184,29 +1184,29 @@ function buildWhatsappUrl(message) {
 }
 
 function buildWhatsappMessage() {
-  const flow = getFlow().filter(
-    (question) => question.type !== "message" && question.id !== "consentimiento"
+  const name = sanitizeText(answers.nombre?.label || "", 80) || "prospecto";
+  const objective = answers.objetivo?.value;
+  const wantsToMoveSoon =
+    answers.etapa?.value === "avanzar_pronto" || answers.vender_tiempo?.value === "urgente";
+
+  if (objective === "vender" && wantsToMoveSoon) {
+    return `Hola Ehecatl, soy ${name}. Acabo de responder el diagnóstico de mi propiedad y me gustaría agendar una llamada para revisar cómo venderla lo antes posible.`;
+  }
+
+  const messages = {
+    vender: `Hola Ehecatl, soy ${name}. Acabo de responder el diagnóstico de mi propiedad y me gustaría que me ayudes a revisar la mejor estrategia para venderla.`,
+    poner_renta: `Hola Ehecatl, soy ${name}. Acabo de responder el diagnóstico de mi propiedad y me gustaría revisar cómo ponerla en renta de forma segura.`,
+    comprar: `Hola Ehecatl, soy ${name}. Acabo de responder tu asesoría y me gustaría revisar opciones para comprar con más claridad.`,
+    rentar: `Hola Ehecatl, soy ${name}. Acabo de responder tu asesoría y me gustaría revisar opciones de renta.`,
+    invertir: `Hola Ehecatl, soy ${name}. Acabo de responder tu asesoría y me gustaría revisar alternativas de inversión inmobiliaria.`,
+    valuacion: `Hola Ehecatl, soy ${name}. Acabo de responder el diagnóstico de mi propiedad y me gustaría revisar su valor aproximado.`,
+    orientacion: `Hola Ehecatl, soy ${name}. Acabo de responder tu asesoría y me gustaría que me ayudes a ordenar mi caso.`,
+  };
+
+  return (
+    messages[objective] ||
+    `Hola Ehecatl, soy ${name}. Acabo de responder tu formulario de asesoría inmobiliaria. Me gustaría que me ayudes a revisar mi caso.`
   );
-  const name = sanitizeText(answers.nombre?.label || "", 80);
-  const intro = name
-    ? `Hola Ehecatl, soy ${name}. Quiero dar seguimiento a mi solicitud inmobiliaria.`
-    : "Hola Ehecatl, quiero dar seguimiento a mi solicitud inmobiliaria.";
-
-  const lines = [
-    intro,
-    "",
-    "Respuestas:",
-    ...flow.map((question) => {
-      const answer = answers[question.id];
-      const label = sanitizeText(answer?.label || "Sin respuesta", OPEN_FIELD_MAX_LENGTH);
-      return `- ${getQuestionLabel(question)}: ${label}`;
-    }),
-    "- Aviso de Privacidad: Aceptado",
-    "",
-    "Nota: no estoy enviando documentos, contraseñas ni datos bancarios por este medio.",
-  ];
-
-  return lines.join("\n");
 }
 
 function openWhatsappWithMessage(message) {
