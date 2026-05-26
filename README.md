@@ -8,6 +8,7 @@ MVP estático para GitHub Pages de Ehecatl Milian, asesor inmobiliario de Centur
 - `aviso-privacidad.html`: página editable para el aviso de privacidad.
 - `style.css`: estilos mobile first con identidad negro, dorado, blanco y tonos neutros.
 - `script.js`: flujo conversacional, rutas condicionales, validaciones, progreso y envío a WhatsApp.
+- `SECURITY.md`: revisión de seguridad, privacidad, límites del sitio estático y fase 2 recomendada.
 - `assets/hero-real-estate.png`: imagen hero editable.
 - `assets/century21-logo.png`: logo de Century 21 usado en el encabezado.
 
@@ -58,6 +59,23 @@ por:
 - Aviso de privacidad: el texto integral está en `aviso-privacidad.html` y puede editarse por secciones.
 
 Si cambias el valor de una opción del objetivo inicial, revisa que exista una ruta con el mismo nombre dentro de `routeQuestions`.
+
+## Seguridad y privacidad
+
+El sitio es estático y no guarda datos personales en `localStorage`, `sessionStorage`, cookies ni base de datos propia. El envío se hace mediante WhatsApp con mensaje precargado.
+
+Protecciones actuales:
+
+- Validaciones frontend para nombre, WhatsApp, ciudad, correo opcional y campos abiertos.
+- Sanitización básica de texto antes de guardar respuestas y armar el mensaje.
+- Límite de 500 caracteres en campos abiertos.
+- Honeypot invisible para bots simples.
+- Tiempo mínimo de interacción antes del envío final.
+- Bloqueo temporal del botón final para evitar envíos repetidos.
+- Aviso de privacidad enlazado y consentimiento obligatorio.
+- Meta `referrer` y Content Security Policy compatible con GitHub Pages.
+
+Consulta `SECURITY.md` para límites y recomendaciones de fase 2.
 
 ## Publicar en GitHub Pages
 

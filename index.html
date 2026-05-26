@@ -7,6 +7,11 @@
       name="description"
       content="Asesoría inmobiliaria inicial con Ehecatl Milian, asesor inmobiliario de Century 21 Edyfico."
     />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; form-action 'self' https://wa.me https://api.whatsapp.com; base-uri 'self'; object-src 'none';"
+    />
     <title>Ehecatl Milian | Century 21 Edyfico</title>
     <link rel="preload" href="assets/hero-real-estate.png" as="image" />
     <link rel="stylesheet" href="style.css" />
@@ -93,6 +98,10 @@
           </div>
 
           <form id="advisoryForm" class="question-card" novalidate>
+            <div class="form-honeypot" aria-hidden="true">
+              <label for="website">Sitio web</label>
+              <input id="website" name="website" type="text" tabindex="-1" autocomplete="off" />
+            </div>
             <div id="questionMount"></div>
             <p id="formError" class="form-error" role="alert" hidden></p>
             <div class="form-actions">

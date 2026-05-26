@@ -1,4 +1,11 @@
 const WHATSAPP_DESTINO = "5214439484031";
+const MIN_FORM_SECONDS = 6;
+const WHATSAPP_SEND_LOCK_MS = 8000;
+const OPEN_FIELD_MAX_LENGTH = 500;
+const SECURITY_NOTE =
+  "Por seguridad, no compartas documentos, contraseñas ni datos bancarios en este formulario. Si hace falta revisar algo específico, lo vemos después por un medio adecuado.";
+const FINISH_DEFAULT_MESSAGE =
+  "Revisaré tus respuestas y me pondré en contacto contigo para orientarte según tu objetivo inmobiliario.";
 
 const baseQuestions = [
   {
@@ -113,7 +120,7 @@ const routeQuestions = {
       title: "¿Qué zonas te harían sentido?",
       help: "Puedes mencionar colonias, municipios, cercanía al trabajo, escuelas o cualquier referencia útil.",
       required: true,
-      placeholder: "Ej. Narvarte, Del Valle, Coyoacán, cerca de mi trabajo...",
+      placeholder: "Ej. zona o colonia, municipio, cerca de mi trabajo...",
     },
     {
       id: "comprar_presupuesto",
@@ -179,10 +186,10 @@ const routeQuestions = {
       id: "vender_ubicacion",
       type: "textarea",
       kicker: "Ubicación",
-      title: "¿En qué zona se encuentra la propiedad?",
+      title: "¿En qué zona o colonia se encuentra la propiedad?",
       help: "No necesito la dirección exacta todavía; con colonia y ciudad es suficiente para iniciar.",
       required: true,
-      placeholder: "Ej. Colonia, municipio o ciudad",
+      placeholder: "Ej. zona o colonia, municipio o ciudad",
     },
     {
       id: "vender_documentos",
@@ -308,10 +315,10 @@ const routeQuestions = {
       id: "poner_renta_ubicacion",
       type: "textarea",
       kicker: "Ubicación",
-      title: "¿En qué zona se encuentra la propiedad?",
+      title: "¿En qué zona o colonia se encuentra la propiedad?",
       help: "No hace falta dirección exacta; una referencia general basta para empezar.",
       required: true,
-      placeholder: "Colonia, ciudad o referencia principal",
+      placeholder: "Zona o colonia, ciudad o referencia general",
     },
     {
       id: "poner_renta_estado",
@@ -442,10 +449,10 @@ const routeQuestions = {
       id: "valuacion_ubicacion",
       type: "textarea",
       kicker: "Ubicación",
-      title: "¿En qué zona se encuentra la propiedad?",
+      title: "¿En qué zona o colonia se encuentra la propiedad?",
       help: "La ubicación es clave para comparar con referencias reales de mercado.",
       required: true,
-      placeholder: "Colonia, ciudad y referencias útiles",
+      placeholder: "Zona o colonia, ciudad y referencias generales",
     },
     {
       id: "valuacion_caracteristicas",
@@ -679,16 +686,17 @@ const contactQuestions = [
     kicker: "Consentimiento",
     title: "Antes de terminar",
     required: true,
-    labelHtml:
-      'Acepto que Erick Ehecatl Carro Milian, asesor inmobiliario vinculado con Century 21 Edyfico, me contacte por los medios proporcionados para dar seguimiento a mi solicitud inmobiliaria. He leído y acepto el <a href="aviso-privacidad.html" target="_blank" rel="noopener noreferrer">Aviso de Privacidad</a>.',
   },
 ];
 
 const answers = {};
 let currentIndex = 0;
 let isFinished = false;
+let formStartedAt = 0;
+let whatsappUnlockAt = 0;
 
 const form = document.querySelector("#advisoryForm");
+const honeypotField = form.querySelector('input[name="website"]');
 const questionMount = document.querySelector("#questionMount");
 const backButton = document.querySelector("#backButton");
 const nextButton = document.querySelector("#nextButton");
@@ -721,6 +729,81 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function sanitizeText(value, maxLength = OPEN_FIELD_MAX_LENGTH) {
+  return String(value || "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function hasSuspiciousMarkup(value) {
+  return /<[^>]+>|javascript\s*:|\bon\w+\s*=/i.test(String(value || ""));
+}
+
+function normalizePhone(value) {
+  return String(value || "").replace(/[^\d+ -]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function getPhoneDigits(value) {
+  return normalizePhone(value).replace(/\D/g, "");
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ""));
+}
+
+function isLikelyBot() {
+  return Boolean(honeypotField && honeypotField.value.trim());
+}
+
+function markFormStarted() {
+  if (!formStartedAt) {
+    formStartedAt = Date.now();
+  }
+}
+
+function getMaxLengthForQuestion(question) {
+  if (question.type === "textarea") {
+    return OPEN_FIELD_MAX_LENGTH;
+  }
+
+  if (question.id === "nombre") {
+    return 80;
+  }
+
+  if (question.id === "ciudad") {
+    return 100;
+  }
+
+  if (question.id === "correo") {
+    return 120;
+  }
+
+  if (question.id === "whatsapp") {
+    return 30;
+  }
+
+  return OPEN_FIELD_MAX_LENGTH;
+}
+
+function createNode(tagName, className, text) {
+  const node = document.createElement(tagName);
+  if (className) {
+    node.className = className;
+  }
+  if (text) {
+    node.textContent = text;
+  }
+  return node;
+}
+
+function clearNode(node) {
+  while (node.firstChild) {
+    node.removeChild(node.firstChild);
+  }
 }
 
 function optionToObject(option) {
@@ -765,84 +848,116 @@ function renderQuestion() {
 
   const title = formatCopy(question.title);
   const helpText = formatCopy(question.help);
-  const help = helpText ? `<p class="question-help">${escapeHtml(helpText)}</p>` : "";
-  questionMount.innerHTML = `
-    <p class="question-kicker">${escapeHtml(formatCopy(question.kicker) || "Asesoría")}</p>
-    <h3 class="question-title" tabindex="-1">${escapeHtml(title)}</h3>
-    ${help}
-    ${renderControl(question)}
-  `;
+  clearNode(questionMount);
+
+  questionMount.appendChild(
+    createNode("p", "question-kicker", formatCopy(question.kicker) || "Asesoría")
+  );
+
+  const titleNode = createNode("h3", "question-title", title);
+  titleNode.tabIndex = -1;
+  questionMount.appendChild(titleNode);
+
+  if (helpText) {
+    questionMount.appendChild(createNode("p", "question-help", helpText));
+  }
+
+  questionMount.appendChild(renderControl(question));
 
   updateProgress();
 
-  const focusTarget = questionMount.querySelector(".question-title");
-  if (focusTarget) {
-    focusTarget.focus({ preventScroll: true });
-  }
+  titleNode.focus({ preventScroll: true });
 }
 
 function renderControl(question) {
   const saved = answers[question.id];
+  const fragment = document.createDocumentFragment();
 
   if (question.type === "message") {
-    return "";
+    return fragment;
   }
 
   if (question.type === "choice") {
-    const options = question.options
-      .map((option) => {
-        const item = optionToObject(option);
-        const checked = saved?.value === item.value ? "checked" : "";
-        return `
-          <label class="choice-control">
-            <input type="radio" name="${escapeHtml(question.id)}" value="${escapeHtml(item.value)}" ${checked}>
-            <span>${escapeHtml(item.label)}</span>
-          </label>
-        `;
-      })
-      .join("");
+    const fieldset = createNode("fieldset", "choices");
+    const grid = createNode("div", "choices-grid");
 
-    return `
-      <fieldset class="choices">
-        <div class="choices-grid">${options}</div>
-      </fieldset>
-    `;
+    question.options.forEach((option) => {
+      const item = optionToObject(option);
+      const label = createNode("label", "choice-control");
+      const input = document.createElement("input");
+      const text = createNode("span", "", item.label);
+
+      input.type = "radio";
+      input.name = question.id;
+      input.value = item.value;
+      input.checked = saved?.value === item.value;
+
+      label.append(input, text);
+      grid.appendChild(label);
+    });
+
+    fieldset.appendChild(grid);
+    return fieldset;
   }
 
   if (question.type === "textarea") {
-    return `
-      <textarea
-        class="field-control"
-        name="${escapeHtml(question.id)}"
-        placeholder="${escapeHtml(question.placeholder || "")}"
-        ${question.required ? "required" : ""}
-      >${escapeHtml(saved?.value || "")}</textarea>
-    `;
+    const note = createNode("p", "open-field-note", SECURITY_NOTE);
+    const textarea = document.createElement("textarea");
+    textarea.className = "field-control";
+    textarea.name = question.id;
+    textarea.placeholder = question.placeholder || "";
+    textarea.required = Boolean(question.required);
+    textarea.maxLength = OPEN_FIELD_MAX_LENGTH;
+    textarea.value = saved?.value || "";
+    fragment.append(note, textarea);
+    return fragment;
   }
 
   if (question.type === "checkbox") {
-    const checked = saved?.value === true ? "checked" : "";
-    const label = question.labelHtml || escapeHtml(question.label || "");
-    return `
-      <label class="checkbox-control">
-        <input type="checkbox" name="${escapeHtml(question.id)}" ${checked}>
-        <span>${label}</span>
-      </label>
-    `;
+    const checked = saved?.value === true;
+    const label = createNode("label", "checkbox-control");
+    const input = document.createElement("input");
+    const text = document.createElement("span");
+
+    input.type = "checkbox";
+    input.name = question.id;
+    input.checked = checked;
+
+    if (question.id === "consentimiento") {
+      text.append(
+        document.createTextNode(
+          "Acepto que Erick Ehecatl Carro Milian, asesor inmobiliario vinculado con Century 21 Edyfico, me contacte por los medios proporcionados para dar seguimiento a mi solicitud inmobiliaria. He leído y acepto el "
+        )
+      );
+      const link = document.createElement("a");
+      link.href = "aviso-privacidad.html";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "Aviso de Privacidad";
+      text.append(link, document.createTextNode("."));
+    } else {
+      text.textContent = question.label || "";
+    }
+
+    label.append(input, text);
+    return label;
   }
 
-  return `
-    <input
-      class="field-control"
-      type="${escapeHtml(question.inputType || "text")}"
-      name="${escapeHtml(question.id)}"
-      value="${escapeHtml(saved?.value || "")}"
-      placeholder="${escapeHtml(question.placeholder || "")}"
-      autocomplete="${escapeHtml(question.autocomplete || "off")}"
-      ${question.inputType === "tel" ? 'inputmode="tel"' : ""}
-      ${question.required ? "required" : ""}
-    >
-  `;
+  const input = document.createElement("input");
+  input.className = "field-control";
+  input.type = question.inputType || "text";
+  input.name = question.id;
+  input.value = saved?.value || "";
+  input.placeholder = question.placeholder || "";
+  input.autocomplete = question.autocomplete || "off";
+  input.required = Boolean(question.required);
+  input.maxLength = getMaxLengthForQuestion(question);
+
+  if (question.inputType === "tel") {
+    input.inputMode = "tel";
+  }
+
+  return input;
 }
 
 function updateProgress() {
@@ -854,11 +969,118 @@ function updateProgress() {
 }
 
 function showError(message) {
+  if (isFinished || form.hidden) {
+    finishMessage.textContent = message;
+    return;
+  }
+
   formError.textContent = message;
   formError.hidden = false;
 }
 
+function validateSafeText(value, question) {
+  const maxLength = getMaxLengthForQuestion(question);
+  const cleaned = sanitizeText(value, maxLength);
+
+  if (sanitizeText(value, maxLength + 1).length > maxLength) {
+    return {
+      isValid: false,
+      message:
+        question.type === "textarea"
+          ? `Para cuidarlo mejor, mantén esta respuesta en máximo ${maxLength} caracteres.`
+          : `Este dato debe tener máximo ${maxLength} caracteres.`,
+    };
+  }
+
+  if (hasSuspiciousMarkup(value)) {
+    return {
+      isValid: false,
+      message: "Por seguridad, escribe la información como texto simple, sin etiquetas o código.",
+    };
+  }
+
+  if (question.required && !cleaned) {
+    return {
+      isValid: false,
+      message:
+        question.id === "nombre"
+          ? "Compárteme tu nombre para poder hablarte de forma más personal."
+          : "Compárteme este dato para continuar.",
+    };
+  }
+
+  if (question.id === "nombre") {
+    if (cleaned.length < 2) {
+      return { isValid: false, message: "Tu nombre debe tener al menos 2 caracteres." };
+    }
+
+    if (/^[\d\s]+$/.test(cleaned)) {
+      return { isValid: false, message: "Escribe tu nombre con letras, por favor." };
+    }
+  }
+
+  if (question.id === "ciudad") {
+    if (cleaned.length < 2) {
+      return { isValid: false, message: "Compárteme tu ciudad o zona para orientarte mejor." };
+    }
+  }
+
+  if (question.inputType === "email" && cleaned && !isValidEmail(cleaned)) {
+    return {
+      isValid: false,
+      message: "Escribe un correo electrónico válido o deja el campo vacío.",
+    };
+  }
+
+  return { isValid: true, value: cleaned };
+}
+
+function getFirstMissingRequiredIndex() {
+  return getFlow().findIndex((question) => {
+    if (!question.required || question.type === "message") {
+      return false;
+    }
+
+    const answer = answers[question.id];
+    if (question.type === "checkbox") {
+      return answer?.value !== true;
+    }
+
+    return !answer || !String(answer.value || "").trim();
+  });
+}
+
+function canSubmit() {
+  if (isLikelyBot()) {
+    return false;
+  }
+
+  const firstMissingIndex = getFirstMissingRequiredIndex();
+  if (firstMissingIndex >= 0) {
+    currentIndex = firstMissingIndex;
+    renderQuestion();
+    showError("Revisa esta respuesta para poder continuar con seguridad.");
+    return false;
+  }
+
+  const elapsedSeconds = formStartedAt ? (Date.now() - formStartedAt) / 1000 : 0;
+  if (elapsedSeconds < MIN_FORM_SECONDS) {
+    showError(
+      "Parece que el formulario se completó demasiado rápido. Por seguridad, revisa tus respuestas antes de continuar."
+    );
+    return false;
+  }
+
+  return true;
+}
+
 function validateAndStore(question) {
+  markFormStarted();
+
+  if (isLikelyBot()) {
+    return false;
+  }
+
   if (question.type === "message") {
     return true;
   }
@@ -897,36 +1119,34 @@ function validateAndStore(question) {
   }
 
   const field = form.querySelector(`[name="${question.id}"]`);
-  const value = field.value.trim();
-
-  if (question.required && !value) {
-    const message =
-      question.id === "nombre"
-        ? "Compárteme tu nombre para poder hablarte de forma más personal."
-        : "Compárteme este dato para continuar.";
-    showError(message);
-    field.focus();
-    return false;
-  }
-
-  if (question.inputType === "email" && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-    showError("Escribe un correo electrónico válido o deja el campo vacío.");
-    field.focus();
-    return false;
-  }
+  const rawValue = field.value;
 
   if (question.inputType === "tel") {
-    const digits = value.replace(/\D/g, "");
+    const normalized = normalizePhone(rawValue);
+    const digits = getPhoneDigits(normalized);
     if (digits.length < 10 || digits.length > 15) {
       showError("Compárteme un número de WhatsApp válido para poder contactarte.");
       field.focus();
       return false;
     }
+
+    answers[question.id] = {
+      value: digits,
+      label: digits,
+    };
+    return true;
+  }
+
+  const validation = validateSafeText(rawValue, question);
+  if (!validation.isValid) {
+    showError(validation.message);
+    field.focus();
+    return false;
   }
 
   answers[question.id] = {
-    value,
-    label: value || "No proporcionado",
+    value: validation.value,
+    label: validation.value || "No proporcionado",
   };
 
   return true;
@@ -939,12 +1159,19 @@ function clearRouteAnswers() {
 }
 
 function showFinish() {
+  const firstMissingIndex = getFirstMissingRequiredIndex();
+  if (firstMissingIndex >= 0) {
+    currentIndex = firstMissingIndex;
+    renderQuestion();
+    showError("Revisa esta respuesta para poder continuar con seguridad.");
+    return;
+  }
+
   isFinished = true;
   form.hidden = true;
   finishScreen.hidden = false;
   finishTitle.textContent = `Gracias, ${getFirstName()}. Ya tengo una idea más clara de lo que necesitas.`;
-  finishMessage.textContent =
-    "Revisaré tus respuestas y me pondré en contacto contigo para orientarte según tu objetivo inmobiliario.";
+  finishMessage.textContent = FINISH_DEFAULT_MESSAGE;
   progressBar.style.width = "100%";
   progressLabel.textContent = "Solicitud completa";
   progressPercent.textContent = "100%";
@@ -957,8 +1184,10 @@ function buildWhatsappUrl(message) {
 }
 
 function buildWhatsappMessage() {
-  const flow = getFlow().filter((question) => question.type !== "message");
-  const name = answers.nombre?.label || "";
+  const flow = getFlow().filter(
+    (question) => question.type !== "message" && question.id !== "consentimiento"
+  );
+  const name = sanitizeText(answers.nombre?.label || "", 80);
   const intro = name
     ? `Hola Ehecatl, soy ${name}. Quiero dar seguimiento a mi solicitud inmobiliaria.`
     : "Hola Ehecatl, quiero dar seguimiento a mi solicitud inmobiliaria.";
@@ -969,16 +1198,19 @@ function buildWhatsappMessage() {
     "Respuestas:",
     ...flow.map((question) => {
       const answer = answers[question.id];
-      const label = answer?.label || "Sin respuesta";
+      const label = sanitizeText(answer?.label || "Sin respuesta", OPEN_FIELD_MAX_LENGTH);
       return `- ${getQuestionLabel(question)}: ${label}`;
     }),
+    "- Aviso de Privacidad: Aceptado",
+    "",
+    "Nota: no estoy enviando documentos, contraseñas ni datos bancarios por este medio.",
   ];
 
   return lines.join("\n");
 }
 
 function openWhatsappWithMessage(message) {
-  window.open(buildWhatsappUrl(message), "_blank", "noopener");
+  window.open(buildWhatsappUrl(message), "_blank", "noopener,noreferrer");
 }
 
 function openQuickWhatsapp() {
@@ -989,6 +1221,7 @@ function openQuickWhatsapp() {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
+  markFormStarted();
   const flow = getFlow();
   const question = flow[currentIndex];
 
@@ -1006,13 +1239,29 @@ form.addEventListener("submit", (event) => {
   renderQuestion();
 });
 
+form.addEventListener("focusin", markFormStarted);
+form.addEventListener("input", markFormStarted);
+
 backButton.addEventListener("click", () => {
   currentIndex = Math.max(0, currentIndex - 1);
   renderQuestion();
 });
 
 sendWhatsappButton.addEventListener("click", () => {
+  const now = Date.now();
+  if (now < whatsappUnlockAt || !canSubmit()) {
+    return;
+  }
+
+  whatsappUnlockAt = now + WHATSAPP_SEND_LOCK_MS;
+  sendWhatsappButton.disabled = true;
+  sendWhatsappButton.textContent = "Abriendo WhatsApp...";
+  finishMessage.textContent = FINISH_DEFAULT_MESSAGE;
   openWhatsappWithMessage(buildWhatsappMessage());
+  window.setTimeout(() => {
+    sendWhatsappButton.disabled = false;
+    sendWhatsappButton.textContent = "Enviar por WhatsApp";
+  }, WHATSAPP_SEND_LOCK_MS);
 });
 
 document.querySelectorAll("[data-whatsapp-quick]").forEach((button) => {
