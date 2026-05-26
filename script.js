@@ -14,6 +14,10 @@ const PROPERTY_DATA_URL = "data/properties.json";
 const FULL_INVENTORY_URL =
   "https://century21mexico.com/busqueda/oficina_632-century-21-edyfico_local";
 
+if ("scrollRestoration" in window.history) {
+  window.history.scrollRestoration = "manual";
+}
+
 const PROPERTY_OPTIONS = [
   ["casa", "Casa"],
   ["departamento", "Departamento"],
@@ -596,6 +600,7 @@ let currentLeadPayload = null;
 let currentLeadSubmission = null;
 let loadedProperties = [];
 let inventoryRecommendationState = null;
+let hasUserInteracted = false;
 let currentIndex = 0;
 let isFinished = false;
 let formStartedAt = 0;
@@ -765,6 +770,7 @@ const SIZE_FIELD_IDS = [
   "vender_terreno_superficie",
   "valuacion_terreno_superficie",
 ];
+const GENERAL_LOCATION_FIELD_IDS = new Set(LOCATION_FIELD_IDS);
 const CONDITION_FIELD_IDS = ["vender_estado", "poner_renta_estado", "valuacion_estado"];
 const OCCUPANCY_FIELD_IDS = ["vender_ocupacion", "poner_renta_ocupacion", "valuacion_ocupacion"];
 const PRICE_BASIS_FIELD_IDS = [
@@ -863,16 +869,55 @@ function sanitizeText(value, maxLength = OPEN_FIELD_MAX_LENGTH) {
     .slice(0, maxLength);
 }
 
+function sanitizeOpenText(value, maxLength = OPEN_FIELD_MAX_LENGTH) {
+  return sanitizeText(value, maxLength)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
 function hasSuspiciousMarkup(value) {
   return /<[^>]+>|javascript\s*:|\bon\w+\s*=/i.test(String(value || ""));
 }
 
 function normalizePhone(value) {
-  return String(value || "").replace(/[^\d+ -]/g, "").replace(/\s+/g, " ").trim();
+  return String(value || "")
+    .replace(/[^\d+\-()\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function getPhoneDigits(value) {
   return normalizePhone(value).replace(/\D/g, "");
+}
+
+function isValidName(value) {
+  return /^[A-Za-zÁÉÍÓÚáéíóúÑñÜü\s'-]{2,80}$/.test(String(value || ""));
+}
+
+function isValidPhone(value) {
+  const rawValue = String(value || "").trim();
+  const hasValidCharacters = /^\+?[\d\s()-]+$/.test(rawValue);
+  const hasOnlyOneLeadingPlus = !rawValue.includes("+") || rawValue.startsWith("+");
+  const digits = getPhoneDigits(rawValue);
+
+  return hasValidCharacters && hasOnlyOneLeadingPlus && digits.length >= 10 && digits.length <= 15;
+}
+
+function isValidCity(value) {
+  return /^[A-Za-zÁÉÍÓÚáéíóúÑñÜü\s.,-]{2,100}$/.test(String(value || ""));
+}
+
+function isValidGeneralLocation(value) {
+  const cleaned = String(value || "");
+  return (
+    cleaned.length >= 2 &&
+    cleaned.length <= OPEN_FIELD_MAX_LENGTH &&
+    /^[A-Za-z0-9ÁÉÍÓÚáéíóúÑñÜü\s.,#/-]+$/.test(cleaned) &&
+    !/[<>{}[\]\\|~^*$%@!]/.test(cleaned) &&
+    !/(.)\1{9,}/.test(cleaned)
+  );
 }
 
 function isValidEmail(value) {
@@ -2179,7 +2224,7 @@ function openPropertyWhatsapp(property) {
   );
 }
 
-function renderQuestion() {
+function renderQuestion({ shouldScroll = false, shouldFocus = false } = {}) {
   isFinished = false;
   const flow = getFlow();
   const question = flow[currentIndex];
@@ -2217,7 +2262,13 @@ function renderQuestion() {
 
   updateProgress();
 
-  titleNode.focus({ preventScroll: true });
+  if (shouldFocus) {
+    titleNode.focus({ preventScroll: true });
+  }
+
+  if (shouldScroll) {
+    scrollToCurrentQuestion();
+  }
 }
 
 function renderControl(question) {
@@ -2408,9 +2459,56 @@ function showError(message) {
   formError.hidden = false;
 }
 
+function scrollToCurrentQuestion() {
+  if (!hasUserInteracted) {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function getScrollBehavior() {
+  return "scrollBehavior" in document.documentElement.style ? "auto" : "auto";
+}
+
+function getHashTarget(hash) {
+  let id = "";
+  try {
+    id = decodeURIComponent(String(hash || "").replace(/^#/, ""));
+  } catch {
+    id = "";
+  }
+
+  return id ? document.getElementById(id) : null;
+}
+
+function handleInitialScrollPosition() {
+  if ("scrollRestoration" in window.history) {
+    window.history.scrollRestoration = "manual";
+  }
+
+  const hash = window.location.hash;
+  window.requestAnimationFrame(() => {
+    if (!hash) {
+      window.scrollTo({ top: 0, left: 0, behavior: getScrollBehavior() });
+      return;
+    }
+
+    const target = getHashTarget(hash);
+    if (target) {
+      target.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
+      return;
+    }
+
+    window.scrollTo({ top: 0, left: 0, behavior: getScrollBehavior() });
+  });
+}
+
 function validateSafeText(value, question) {
   const maxLength = getMaxLengthForQuestion(question);
-  const cleaned = sanitizeText(value, maxLength);
+  const cleaned = question.type === "textarea" ? sanitizeOpenText(value, maxLength) : sanitizeText(value, maxLength);
 
   if (sanitizeText(value, maxLength + 1).length > maxLength) {
     return {
@@ -2439,19 +2537,34 @@ function validateSafeText(value, question) {
     };
   }
 
-  if (question.id === "nombre") {
-    if (cleaned.length < 2) {
-      return { isValid: false, message: "Tu nombre debe tener al menos 2 caracteres." };
-    }
+  if (!cleaned) {
+    return { isValid: true, value: "" };
+  }
 
-    if (/^[\d\s]+$/.test(cleaned)) {
-      return { isValid: false, message: "Escribe tu nombre con letras, por favor." };
+  if (question.id === "nombre") {
+    if (!isValidName(cleaned)) {
+      return {
+        isValid: false,
+        message: "Escribe tu nombre sin números ni símbolos especiales.",
+      };
     }
   }
 
   if (question.id === "ciudad") {
-    if (cleaned.length < 2) {
-      return { isValid: false, message: "Compárteme tu ciudad o zona para orientarte mejor." };
+    if (!isValidCity(cleaned)) {
+      return {
+        isValid: false,
+        message: "Escribe la ciudad sin símbolos especiales.",
+      };
+    }
+  }
+
+  if (GENERAL_LOCATION_FIELD_IDS.has(question.id)) {
+    if (!isValidGeneralLocation(cleaned)) {
+      return {
+        isValid: false,
+        message: "Escribe solo una zona, colonia o referencia general sin símbolos especiales.",
+      };
     }
   }
 
@@ -2502,7 +2615,7 @@ function canSubmit() {
   const firstMissingIndex = getFirstMissingRequiredIndex();
   if (firstMissingIndex >= 0) {
     currentIndex = firstMissingIndex;
-    renderQuestion();
+    renderQuestion({ shouldScroll: true, shouldFocus: true });
     showError("Revisa esta respuesta para poder continuar con seguridad.");
     return false;
   }
@@ -2615,14 +2728,13 @@ function validateFieldAndStore(question) {
   const rawValue = field.value;
 
   if (question.inputType === "tel") {
-    const normalized = normalizePhone(rawValue);
-    const digits = getPhoneDigits(normalized);
-    if (digits.length < 10 || digits.length > 15) {
-      showError("Compárteme un número de WhatsApp válido para poder contactarte.");
+    if (!isValidPhone(rawValue)) {
+      showError("Escribe un WhatsApp válido, solo con números, espacios o guiones.");
       field.focus();
       return false;
     }
 
+    const digits = getPhoneDigits(rawValue);
     answers[question.id] = {
       value: digits,
       label: digits,
@@ -2756,14 +2868,14 @@ function showFinish() {
   const firstMissingIndex = getFirstMissingRequiredIndex();
   if (firstMissingIndex >= 0) {
     currentIndex = firstMissingIndex;
-    renderQuestion();
+    renderQuestion({ shouldScroll: true, shouldFocus: true });
     showError("Revisa esta respuesta para poder continuar con seguridad.");
     return;
   }
 
   if (!prepareLeadPayload()) {
     currentIndex = Math.max(0, getFlow().length - 1);
-    renderQuestion();
+    renderQuestion({ shouldScroll: true, shouldFocus: true });
     showError("Revisa tus datos de contacto y consentimiento antes de continuar.");
     return;
   }
@@ -2777,7 +2889,9 @@ function showFinish() {
   progressBar.style.width = "100%";
   progressLabel.textContent = "Solicitud completa";
   progressPercent.textContent = "100%";
-  finishScreen.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (hasUserInteracted) {
+    finishScreen.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function buildWhatsappUrl(message) {
@@ -2824,6 +2938,7 @@ function openQuickWhatsapp() {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
+  hasUserInteracted = true;
   markFormStarted();
   const flow = getFlow();
   const question = flow[currentIndex];
@@ -2839,18 +2954,20 @@ form.addEventListener("submit", (event) => {
     return;
   }
 
-  renderQuestion();
+  renderQuestion({ shouldScroll: true, shouldFocus: true });
 });
 
 form.addEventListener("focusin", markFormStarted);
 form.addEventListener("input", markFormStarted);
 
 backButton.addEventListener("click", () => {
+  hasUserInteracted = true;
   currentIndex = Math.max(0, currentIndex - 1);
-  renderQuestion();
+  renderQuestion({ shouldScroll: true, shouldFocus: true });
 });
 
 sendWhatsappButton.addEventListener("click", () => {
+  hasUserInteracted = true;
   const now = Date.now();
   if (now < whatsappUnlockAt || !canSubmit()) {
     return;
@@ -2873,15 +2990,26 @@ sendWhatsappButton.addEventListener("click", () => {
 });
 
 document.querySelectorAll("[data-whatsapp-quick]").forEach((button) => {
-  button.addEventListener("click", openQuickWhatsapp);
+  button.addEventListener("click", () => {
+    hasUserInteracted = true;
+    openQuickWhatsapp();
+  });
 });
 
-document.querySelector('a[href="#asesoria"]').addEventListener("click", () => {
-  window.setTimeout(() => {
-    const title = questionMount.querySelector(".question-title");
-    title?.focus({ preventScroll: true });
-  }, 350);
+document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+  anchor.addEventListener("click", (event) => {
+    const target = getHashTarget(anchor.hash);
+    if (!target) {
+      return;
+    }
+
+    hasUserInteracted = true;
+    event.preventDefault();
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.history.pushState(null, "", anchor.hash);
+  });
 });
 
 renderQuestion();
 loadProperties();
+handleInitialScrollPosition();

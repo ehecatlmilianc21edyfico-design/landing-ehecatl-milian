@@ -327,6 +327,7 @@ h1 {
 }
 
 .advice-section {
+  scroll-margin-top: 90px;
   padding: 18px clamp(18px, 4vw, 48px) 72px;
   background:
     linear-gradient(180deg, var(--paper) 0%, #ede4d5 100%);
@@ -389,6 +390,7 @@ h1 {
 
 .question-card,
 .finish-card {
+  scroll-margin-top: 90px;
   background: var(--white);
   border: 1px solid rgba(176, 138, 46, 0.18);
   border-radius: 8px;
