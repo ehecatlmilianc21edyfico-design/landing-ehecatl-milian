@@ -1,0 +1,23 @@
+[
+  {
+    "id": "ejemplo-001",
+    "title": "Ejemplo de propiedad",
+    "operation": "venta",
+    "type": "casa",
+    "price": 0,
+    "priceText": "$0 MXN",
+    "location": "Zona general, Ciudad",
+    "city": "Morelia",
+    "bedrooms": null,
+    "bathrooms": null,
+    "parking": null,
+    "constructionM2": null,
+    "landM2": null,
+    "topFeatures": [],
+    "image": "",
+    "url": "",
+    "source": "Century 21 Edyfico",
+    "fetchedAt": "",
+    "status": "activa"
+  }
+]

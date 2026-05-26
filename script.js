@@ -10,6 +10,9 @@ const FINISH_DEFAULT_MESSAGE =
   "Revisaré tus respuestas y me pondré en contacto contigo para orientarte según tu objetivo inmobiliario.";
 const PRIVACY_CONSENT_TEXT =
   "Acepto que Erick Ehecatl Carro Milian, asesor inmobiliario vinculado con Century 21 Edyfico, me contacte por los medios proporcionados para dar seguimiento a mi solicitud inmobiliaria. He leído y acepto el Aviso de Privacidad.";
+const PROPERTY_DATA_URL = "data/properties.json";
+const FULL_INVENTORY_URL =
+  "https://century21mexico.com/busqueda/oficina_632-century-21-edyfico_local";
 
 const PROPERTY_OPTIONS = [
   ["casa", "Casa"],
@@ -591,6 +594,8 @@ const sessionId = generateLeadId().replace("lead_", "session_");
 const firstPageUrl = window.location.href;
 let currentLeadPayload = null;
 let currentLeadSubmission = null;
+let loadedProperties = [];
+let inventoryRecommendationState = null;
 let currentIndex = 0;
 let isFinished = false;
 let formStartedAt = 0;
@@ -609,6 +614,9 @@ const finishScreen = document.querySelector("#finishScreen");
 const finishTitle = document.querySelector("#finish-title");
 const finishMessage = document.querySelector("#finishMessage");
 const sendWhatsappButton = document.querySelector("#sendWhatsappButton");
+const propertyGrid = document.querySelector("#propertyGrid");
+const inventoryEmpty = document.querySelector("#inventoryEmpty");
+const inventoryDisclaimer = document.querySelector("#inventoryDisclaimer");
 
 const INTERNAL_ROUTE_ANSWER_IDS = [
   "precio_requiere_validacion",
@@ -1604,7 +1612,9 @@ function buildLeadPayload(state) {
     landDetails: buildLandDetails(state),
     qualification,
     internalReview,
-    recommendedProperties: [],
+    recommendedProperties: getRecommendedProperties(state, loadedProperties).map(
+      getLeadPropertySummary
+    ),
     metrics: {
       sessionId,
       firstPageUrl: sanitizeText(firstPageUrl, 500),
@@ -1650,6 +1660,401 @@ function prepareLeadPayload() {
   currentLeadPayload = buildLeadPayload(answers);
   currentLeadSubmission = submitLead(currentLeadPayload);
   return currentLeadSubmission.ok;
+}
+
+function normalizeInventoryText(value) {
+  return sanitizeText(value, OPEN_FIELD_MAX_LENGTH)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function normalizeProperty(rawProperty) {
+  const topFeatures = Array.isArray(rawProperty.topFeatures)
+    ? rawProperty.topFeatures.map((feature) => sanitizeText(feature, 80)).filter(Boolean)
+    : [];
+
+  return {
+    id: sanitizeText(rawProperty.id || "", 120),
+    title: sanitizeText(rawProperty.title || "", 160),
+    operation: normalizeInventoryText(rawProperty.operation || ""),
+    type: normalizeInventoryText(rawProperty.type || ""),
+    price: Number.isFinite(Number(rawProperty.price)) ? Number(rawProperty.price) : 0,
+    priceText: sanitizeText(rawProperty.priceText || "", 80),
+    location: sanitizeText(rawProperty.location || "", 160),
+    city: sanitizeText(rawProperty.city || "", 100),
+    bedrooms: rawProperty.bedrooms ?? null,
+    bathrooms: rawProperty.bathrooms ?? null,
+    parking: rawProperty.parking ?? null,
+    constructionM2: rawProperty.constructionM2 ?? null,
+    landM2: rawProperty.landM2 ?? null,
+    topFeatures,
+    image: sanitizeText(rawProperty.image || "", 300),
+    url: sanitizeText(rawProperty.url || "", 500),
+    source: sanitizeText(rawProperty.source || "", 120),
+    fetchedAt: sanitizeText(rawProperty.fetchedAt || "", 80),
+    status: normalizeInventoryText(rawProperty.status || "activa"),
+  };
+}
+
+function isActiveProperty(property) {
+  return !["vendida", "rentada", "inactiva"].includes(normalizeInventoryText(property.status));
+}
+
+async function loadProperties() {
+  try {
+    const response = await fetch(PROPERTY_DATA_URL, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("properties_unavailable");
+    }
+
+    const properties = await response.json();
+    loadedProperties = Array.isArray(properties)
+      ? properties.map(normalizeProperty).filter((property) => property.id || property.title)
+      : [];
+  } catch {
+    loadedProperties = [];
+  }
+
+  updateInventoryRecommendations(inventoryRecommendationState);
+  return loadedProperties;
+}
+
+function getPropertyOperationPreference(objective) {
+  if (objective === "comprar") {
+    return "venta";
+  }
+
+  if (objective === "rentar") {
+    return "renta";
+  }
+
+  if (objective === "invertir") {
+    return "venta";
+  }
+
+  return "";
+}
+
+function getInventoryNeedTerms(state) {
+  const terms = [];
+
+  NEED_FIELD_IDS.forEach((id) => {
+    const answer = getStateAnswer(state, id);
+    if (!answer) {
+      return;
+    }
+
+    const value = getStateValue(state, id);
+    if (Array.isArray(value)) {
+      value.forEach((item) => addUnique(terms, item));
+    } else if (value) {
+      addUnique(terms, value);
+    }
+
+    const label = getStateLabel(state, id);
+    if (label && label !== "No proporcionado") {
+      label.split(",").forEach((item) => addUnique(terms, item));
+    }
+  });
+
+  return terms.map(normalizeInventoryText).filter(Boolean);
+}
+
+function getStateLocationTerms(state) {
+  return [
+    getStateLabel(state, "ciudad"),
+    getFirstStateLabel(state, LOCATION_FIELD_IDS),
+  ]
+    .map(normalizeInventoryText)
+    .filter((term) => term.length > 3);
+}
+
+function hasCompatibleLocation(state, property) {
+  const propertyLocation = normalizeInventoryText(`${property.city} ${property.location}`);
+  return getStateLocationTerms(state).some(
+    (term) => propertyLocation.includes(term) || term.includes(propertyLocation)
+  );
+}
+
+function hasCompatibleType(state, property) {
+  const wantedType = normalizeInventoryText(getFirstStateValue(state, PROPERTY_TYPE_FIELD_IDS));
+  const propertyType = normalizeInventoryText(property.type);
+
+  if (!wantedType || !propertyType || wantedType === "aun_no_se") {
+    return false;
+  }
+
+  return propertyType.includes(wantedType) || wantedType.includes(propertyType);
+}
+
+function hasCompatibleFeature(state, property) {
+  const needTerms = getInventoryNeedTerms(state);
+  const featureText = normalizeInventoryText((property.topFeatures || []).join(" "));
+
+  if (!needTerms.length || !featureText) {
+    return false;
+  }
+
+  return needTerms.some((term) => featureText.includes(term) || term.includes(featureText));
+}
+
+function getPropertyRecommendationScore(state, property) {
+  const objective = getStateValue(state, "objetivo");
+  const operationPreference = getPropertyOperationPreference(objective);
+  let score = 0;
+
+  if (operationPreference && property.operation === operationPreference) {
+    score += 20;
+  }
+
+  if (
+    objective === "invertir" &&
+    property.operation === "venta" &&
+    ["terreno", "departamento", "local", "local_oficina"].includes(property.type)
+  ) {
+    score += 12;
+  }
+
+  if (
+    objective === "invertir" &&
+    property.topFeatures.some((feature) =>
+      /plusval[ií]a|renta|inversi[oó]n|rendimiento/i.test(feature)
+    )
+  ) {
+    score += 8;
+  }
+
+  if (hasCompatibleLocation(state, property)) {
+    score += 10;
+  }
+
+  if (hasCompatibleType(state, property)) {
+    score += 8;
+  }
+
+  if (hasCompatibleFeature(state, property)) {
+    score += 6;
+  }
+
+  return score;
+}
+
+function getRecommendedProperties(state, properties) {
+  const activeProperties = properties.filter(isActiveProperty);
+
+  if (!activeProperties.length) {
+    return [];
+  }
+
+  if (!state || !getStateValue(state, "objetivo")) {
+    return activeProperties.slice(0, 3);
+  }
+
+  const scoredProperties = activeProperties
+    .map((property, index) => ({
+      property,
+      score: getPropertyRecommendationScore(state, property),
+      index,
+    }))
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+  const matches = scoredProperties.filter((item) => item.score > 0);
+
+  if (matches.length) {
+    return matches.slice(0, 6).map((item) => item.property);
+  }
+
+  return activeProperties.slice(0, 3);
+}
+
+function getLeadPropertySummary(property) {
+  return {
+    id: property.id,
+    title: property.title,
+    operation: property.operation,
+    type: property.type,
+    priceText: property.priceText,
+    location: property.location,
+    city: property.city,
+    url: property.url,
+    source: property.source,
+  };
+}
+
+function updateInventoryRecommendations(state = null) {
+  inventoryRecommendationState = state;
+  renderPropertyCards(getRecommendedProperties(state, loadedProperties));
+
+  if (currentLeadPayload) {
+    currentLeadPayload.recommendedProperties = getRecommendedProperties(
+      state || answers,
+      loadedProperties
+    ).map(getLeadPropertySummary);
+  }
+}
+
+function formatPropertyType(type) {
+  return sanitizeText(type || "", 60).replaceAll("_", " ");
+}
+
+function formatPropertyOperation(operation) {
+  const normalized = normalizeInventoryText(operation);
+  if (normalized === "venta") {
+    return "Venta";
+  }
+
+  if (normalized === "renta") {
+    return "Renta";
+  }
+
+  return sanitizeText(operation || "", 60);
+}
+
+function getPropertyTitle(property) {
+  return property.title || property.location || property.city || "Propiedad";
+}
+
+function getPropertyPriceText(property) {
+  if (property.priceText) {
+    return property.priceText;
+  }
+
+  if (property.price > 0) {
+    return new Intl.NumberFormat("es-MX", {
+      style: "currency",
+      currency: "MXN",
+      maximumFractionDigits: 0,
+    }).format(property.price);
+  }
+
+  return "Precio por confirmar";
+}
+
+function appendPropertyText(parent, tagName, className, text) {
+  const cleanText = sanitizeText(text || "", 160);
+  if (!cleanText) {
+    return;
+  }
+
+  parent.appendChild(createNode(tagName, className, cleanText));
+}
+
+function createPropertyMetric(label, value, suffix = "") {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const metric = createNode("span", "property-metric");
+  metric.textContent = `${label}: ${sanitizeText(value, 40)}${suffix}`;
+  return metric;
+}
+
+function renderPropertyCards(properties) {
+  if (!propertyGrid || !inventoryEmpty || !inventoryDisclaimer) {
+    return;
+  }
+
+  clearNode(propertyGrid);
+  const visibleProperties = properties.filter(isActiveProperty);
+  inventoryEmpty.hidden = visibleProperties.length > 0;
+  inventoryDisclaimer.hidden = visibleProperties.length === 0;
+
+  if (!visibleProperties.length) {
+    return;
+  }
+
+  visibleProperties.forEach((property) => {
+    propertyGrid.appendChild(createPropertyCard(property));
+  });
+}
+
+function createPropertyCard(property) {
+  const card = createNode("article", "property-card");
+
+  if (property.image) {
+    const media = createNode("div", "property-media");
+    const image = document.createElement("img");
+    image.src = property.image;
+    image.alt = getPropertyTitle(property);
+    image.loading = "lazy";
+    media.appendChild(image);
+    card.appendChild(media);
+  }
+
+  const body = createNode("div", "property-body");
+  const tags = createNode("div", "property-tags");
+  const operationLabel = formatPropertyOperation(property.operation);
+  const typeLabel = formatPropertyType(property.type);
+
+  appendPropertyText(tags, "span", "property-tag", operationLabel);
+  appendPropertyText(tags, "span", "property-tag", typeLabel);
+  body.appendChild(tags);
+
+  appendPropertyText(body, "h3", "property-title", getPropertyTitle(property));
+  appendPropertyText(body, "p", "property-price", getPropertyPriceText(property));
+  appendPropertyText(body, "p", "property-location", property.location || property.city);
+
+  const metrics = createNode("div", "property-metrics");
+  [
+    createPropertyMetric("Rec", property.bedrooms),
+    createPropertyMetric("Baños", property.bathrooms),
+    createPropertyMetric("Est", property.parking),
+    createPropertyMetric("Const", property.constructionM2, " m2"),
+    createPropertyMetric("Terreno", property.landM2, " m2"),
+  ]
+    .filter(Boolean)
+    .forEach((metric) => metrics.appendChild(metric));
+
+  if (metrics.childNodes.length) {
+    body.appendChild(metrics);
+  }
+
+  if (property.topFeatures.length) {
+    const features = createNode("div", "property-features");
+    property.topFeatures.slice(0, 3).forEach((feature) => {
+      appendPropertyText(features, "span", "property-feature", feature);
+    });
+    body.appendChild(features);
+  }
+
+  body.appendChild(createPropertyActions(property));
+  card.appendChild(body);
+
+  return card;
+}
+
+function createPropertyActions(property) {
+  const actions = createNode("div", "property-actions");
+
+  if (property.url) {
+    const link = createNode("a", "button button-ghost", "Ver propiedad");
+    link.href = property.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    actions.appendChild(link);
+  } else {
+    const pending = createNode("button", "button button-disabled", "Ficha pendiente");
+    pending.type = "button";
+    pending.disabled = true;
+    actions.appendChild(pending);
+  }
+
+  const askButton = createNode("button", "button button-primary", "Preguntar por esta opción");
+  askButton.type = "button";
+  askButton.addEventListener("click", () => {
+    openPropertyWhatsapp(property);
+  });
+  actions.appendChild(askButton);
+
+  return actions;
+}
+
+function openPropertyWhatsapp(property) {
+  const name = sanitizeText(getStateLabel(answers, "nombre"), 80) || "una persona interesada";
+  const title = sanitizeText(getPropertyTitle(property), 140);
+  openWhatsappWithMessage(
+    `Hola Ehecatl, soy ${name}. Me interesó una propiedad del inventario: ${title}. ¿Me ayudas a revisarla?`
+  );
 }
 
 function renderQuestion() {
@@ -2241,6 +2646,7 @@ function showFinish() {
     return;
   }
 
+  updateInventoryRecommendations(answers);
   isFinished = true;
   form.hidden = true;
   finishScreen.hidden = false;
@@ -2356,3 +2762,4 @@ document.querySelector('a[href="#asesoria"]').addEventListener("click", () => {
 });
 
 renderQuestion();
+loadProperties();
