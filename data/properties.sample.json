@@ -1,23 +1,27 @@
 [
   {
     "id": "ejemplo-001",
-    "title": "Ejemplo de propiedad",
+    "title": "Ejemplo de casa en venta",
     "operation": "venta",
     "type": "casa",
     "price": 0,
     "priceText": "$0 MXN",
-    "location": "Zona general, Ciudad",
+    "location": "Zona general, Morelia, Michoacán",
     "city": "Morelia",
-    "bedrooms": null,
-    "bathrooms": null,
-    "parking": null,
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "parking": 1,
     "constructionM2": null,
     "landM2": null,
-    "topFeatures": [],
-    "image": "",
+    "topFeatures": ["fachada", "estacionamiento", "zona tranquila"],
+    "coverImage": "",
+    "facadeImage": "",
+    "images": [],
+    "imageAlt": "Fachada de propiedad en venta",
     "url": "",
     "source": "Century 21 Edyfico",
     "fetchedAt": "",
-    "status": "activa"
+    "status": "activa",
+    "needsImageReview": true
   }
 ]

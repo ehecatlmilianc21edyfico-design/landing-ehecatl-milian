@@ -19,11 +19,15 @@ Campos disponibles:
 - `bedrooms`, `bathrooms`, `parking`: números si aplican.
 - `constructionM2`, `landM2`: metros cuadrados si aplican.
 - `topFeatures`: arreglo de características, por ejemplo `["plusvalía", "seguridad", "terraza"]`.
-- `image`: ruta de imagen. Por seguridad, usa imágenes locales del proyecto o deja el campo vacío.
+- `coverImage`: imagen principal que se muestra en la tarjeta.
+- `facadeImage`: imagen de fachada cuando esté disponible.
+- `images`: arreglo con mínimo 1 y máximo 3 imágenes.
+- `imageAlt`: descripción breve de la imagen principal.
 - `url`: liga pública de la ficha original.
 - `source`: fuente, por ejemplo `Century 21 Edyfico`.
 - `fetchedAt`: fecha de actualización manual.
 - `status`: `activa`, `vendida`, `rentada` o `inactiva`.
+- `needsImageReview`: `true` cuando no se sabe si la imagen principal corresponde a la fachada o requiere revisión manual.
 
 ## Propiedades inactivas
 
@@ -35,15 +39,37 @@ La landing no muestra propiedades con `status`:
 
 Para ocultar una propiedad, cambia su `status` a uno de esos valores.
 
-## Links e imágenes
+## Links
 
 Actualiza `url` con la ficha original de la propiedad. Si no hay liga disponible, la tarjeta mostrará `Ficha pendiente`.
 
-Para imágenes, lo más seguro en GitHub Pages es guardar el archivo dentro de `assets/` y colocar una ruta como:
+## Imágenes de propiedades
+
+Cada propiedad debe tener mínimo 1 imagen y máximo 3 imágenes en `images`.
+
+La fachada debe ir en `facadeImage` siempre que se tenga. Si existe `facadeImage`, úsala también como `coverImage`, porque la fachada debe ser la imagen principal cuando esté disponible.
+
+Si no se sabe cuál imagen es la fachada, usa la mejor imagen disponible como `coverImage` y marca:
 
 ```json
-"image": "assets/propiedades/casa-ejemplo.jpg"
+"needsImageReview": true
 ```
+
+Antes de publicar inventario real, revisa que las imágenes correspondan a la propiedad correcta y que no estén rotas.
+
+Para imágenes, lo más seguro en GitHub Pages es guardar los archivos dentro de `assets/` y colocar rutas locales como:
+
+```json
+"coverImage": "assets/propiedades/casa-ejemplo-fachada.jpg",
+"facadeImage": "assets/propiedades/casa-ejemplo-fachada.jpg",
+"images": [
+  "assets/propiedades/casa-ejemplo-fachada.jpg",
+  "assets/propiedades/casa-ejemplo-sala.jpg",
+  "assets/propiedades/casa-ejemplo-cocina.jpg"
+]
+```
+
+Si una propiedad no tiene imagen, la landing muestra un placeholder con `Imagen pendiente`. Aun así, antes de usar inventario real conviene completar al menos una imagen por propiedad.
 
 ## Recomendaciones básicas
 

@@ -1673,6 +1673,20 @@ function normalizeProperty(rawProperty) {
   const topFeatures = Array.isArray(rawProperty.topFeatures)
     ? rawProperty.topFeatures.map((feature) => sanitizeText(feature, 80)).filter(Boolean)
     : [];
+  const rawImages = Array.isArray(rawProperty.images) ? rawProperty.images : [];
+  const facadeImage = sanitizeText(rawProperty.facadeImage || "", 300);
+  const legacyImage = sanitizeText(rawProperty.image || "", 300);
+  const submittedCoverImage = sanitizeText(rawProperty.coverImage || "", 300);
+  const images = [
+    facadeImage,
+    submittedCoverImage,
+    ...rawImages.map((image) => sanitizeText(image, 300)),
+    legacyImage,
+  ].filter(Boolean);
+  const uniqueImages = [...new Set(images)].slice(0, 3);
+  const coverImage = facadeImage || submittedCoverImage || uniqueImages[0] || "";
+  const needsImageReview =
+    Boolean(rawProperty.needsImageReview) || Boolean(coverImage && !facadeImage);
 
   return {
     id: sanitizeText(rawProperty.id || "", 120),
@@ -1689,16 +1703,38 @@ function normalizeProperty(rawProperty) {
     constructionM2: rawProperty.constructionM2 ?? null,
     landM2: rawProperty.landM2 ?? null,
     topFeatures,
-    image: sanitizeText(rawProperty.image || "", 300),
+    coverImage,
+    facadeImage,
+    images: uniqueImages,
+    imageAlt: sanitizeText(rawProperty.imageAlt || "", 180),
     url: sanitizeText(rawProperty.url || "", 500),
     source: sanitizeText(rawProperty.source || "", 120),
     fetchedAt: sanitizeText(rawProperty.fetchedAt || "", 80),
     status: normalizeInventoryText(rawProperty.status || "activa"),
+    needsImageReview,
   };
 }
 
 function isActiveProperty(property) {
   return !["vendida", "rentada", "inactiva"].includes(normalizeInventoryText(property.status));
+}
+
+function getPropertyImages(property) {
+  const images = [
+    property.facadeImage,
+    property.coverImage,
+    ...(Array.isArray(property.images) ? property.images : []),
+  ].filter(Boolean);
+
+  return [...new Set(images)].slice(0, 3);
+}
+
+function getPropertyCoverImage(property) {
+  return property.coverImage || property.facadeImage || getPropertyImages(property)[0] || "";
+}
+
+function hasPropertyImage(property) {
+  return Boolean(getPropertyCoverImage(property));
 }
 
 async function loadProperties() {
@@ -1837,6 +1873,12 @@ function getPropertyRecommendationScore(state, property) {
     score += 6;
   }
 
+  if (property.facadeImage) {
+    score += 6;
+  } else if (hasPropertyImage(property)) {
+    score += 4;
+  }
+
   return score;
 }
 
@@ -1848,7 +1890,15 @@ function getRecommendedProperties(state, properties) {
   }
 
   if (!state || !getStateValue(state, "objetivo")) {
-    return activeProperties.slice(0, 3);
+    return activeProperties
+      .map((property, index) => ({ property, index }))
+      .sort(
+        (a, b) =>
+          Number(hasPropertyImage(b.property)) - Number(hasPropertyImage(a.property)) ||
+          a.index - b.index
+      )
+      .slice(0, 3)
+      .map((item) => item.property);
   }
 
   const scoredProperties = activeProperties
@@ -1864,7 +1914,15 @@ function getRecommendedProperties(state, properties) {
     return matches.slice(0, 6).map((item) => item.property);
   }
 
-  return activeProperties.slice(0, 3);
+  return activeProperties
+    .map((property, index) => ({ property, index }))
+    .sort(
+      (a, b) =>
+        Number(hasPropertyImage(b.property)) - Number(hasPropertyImage(a.property)) ||
+        a.index - b.index
+    )
+    .slice(0, 3)
+    .map((item) => item.property);
 }
 
 function getLeadPropertySummary(property) {
@@ -1876,6 +1934,7 @@ function getLeadPropertySummary(property) {
     priceText: property.priceText,
     location: property.location,
     city: property.city,
+    coverImage: getPropertyCoverImage(property),
     url: property.url,
     source: property.source,
   };
@@ -1970,16 +2029,7 @@ function renderPropertyCards(properties) {
 
 function createPropertyCard(property) {
   const card = createNode("article", "property-card");
-
-  if (property.image) {
-    const media = createNode("div", "property-media");
-    const image = document.createElement("img");
-    image.src = property.image;
-    image.alt = getPropertyTitle(property);
-    image.loading = "lazy";
-    media.appendChild(image);
-    card.appendChild(media);
-  }
+  card.appendChild(createPropertyMedia(property));
 
   const body = createNode("div", "property-body");
   const tags = createNode("div", "property-tags");
@@ -2021,6 +2071,78 @@ function createPropertyCard(property) {
   card.appendChild(body);
 
   return card;
+}
+
+function createPropertyMedia(property) {
+  const media = createNode("div", "property-media");
+  const images = getPropertyImages(property);
+  const coverImage = getPropertyCoverImage(property);
+  const placeholder = createNode("div", "property-image-placeholder", "Imagen pendiente");
+
+  media.appendChild(placeholder);
+
+  if (coverImage) {
+    const image = document.createElement("img");
+    image.alt = property.imageAlt || getPropertyTitle(property);
+    image.loading = "lazy";
+    image.addEventListener("load", () => {
+      placeholder.hidden = true;
+    });
+    image.addEventListener("error", () => {
+      image.remove();
+      placeholder.hidden = false;
+    });
+    image.src = coverImage;
+    media.appendChild(image);
+  }
+
+  if (images.length > 1) {
+    const thumbnails = createNode("div", "property-thumbnails");
+    images.forEach((imageUrl, index) => {
+      const button = createNode("button", "property-thumbnail");
+      const thumbnail = document.createElement("img");
+
+      button.type = "button";
+      button.setAttribute("aria-label", `Ver imagen ${index + 1} de la propiedad`);
+      thumbnail.src = imageUrl;
+      thumbnail.alt = "";
+      thumbnail.loading = "lazy";
+      thumbnail.addEventListener("error", () => {
+        button.remove();
+      });
+      button.addEventListener("click", () => {
+        const mainImage = media.querySelector(".property-main-image");
+        if (mainImage) {
+          mainImage.src = imageUrl;
+          placeholder.hidden = true;
+          thumbnails.querySelectorAll(".property-thumbnail").forEach((thumbnailButton) => {
+            thumbnailButton.classList.remove("is-active");
+          });
+          button.classList.add("is-active");
+        }
+      });
+
+      if (imageUrl === coverImage) {
+        button.classList.add("is-active");
+      }
+
+      thumbnail.className = "property-thumbnail-image";
+      button.appendChild(thumbnail);
+      thumbnails.appendChild(button);
+    });
+    media.appendChild(thumbnails);
+  }
+
+  const mainImage = media.querySelector("img");
+  if (mainImage) {
+    mainImage.classList.add("property-main-image");
+  }
+
+  if (property.needsImageReview) {
+    media.appendChild(createNode("span", "property-image-review", "Revisar imagen"));
+  }
+
+  return media;
 }
 
 function createPropertyActions(property) {
