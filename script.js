@@ -1184,10 +1184,11 @@ function buildWhatsappUrl(message) {
 }
 
 function buildWhatsappMessage() {
-  const name = sanitizeText(answers.nombre?.label || "", 80) || "prospecto";
+  const name = sanitizeText(answers.nombre?.label || "", 80) || "gracias";
   const objective = answers.objetivo?.value;
-  const wantsToMoveSoon =
-    answers.etapa?.value === "avanzar_pronto" || answers.vender_tiempo?.value === "urgente";
+  const etapa = answers.etapa?.value;
+  const venderTiempo = answers.vender_tiempo?.value;
+  const wantsToMoveSoon = etapa === "avanzar_pronto" || venderTiempo === "urgente";
 
   if (objective === "vender" && wantsToMoveSoon) {
     return `Hola Ehecatl, soy ${name}. Acabo de responder el diagnóstico de mi propiedad y me gustaría agendar una llamada para revisar cómo venderla lo antes posible.`;
