@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es-MX">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Asesoría inmobiliaria inicial con Ehecatl Milian, asesor inmobiliario de Century 21 Edyfico."
+    />
+    <title>Ehecatl Milian | Century 21 Edyfico</title>
+    <link rel="preload" href="assets/hero-real-estate.png" as="image" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#inicio" aria-label="Ehecatl Milian, Century 21 Edyfico">
+        <img class="brand-logo" src="assets/century21-logo.png" alt="Century 21" />
+        <span class="brand-copy">
+          <span>Century 21 Edyfico</span>
+          <strong>Ehecatl Milian</strong>
+        </span>
+      </a>
+      <button class="header-whatsapp" type="button" data-whatsapp-quick>
+        WhatsApp
+      </button>
+    </header>
+
+    <main id="inicio">
+      <section class="hero" aria-labelledby="hero-title">
+        <img
+          class="hero-image"
+          src="assets/hero-real-estate.png"
+          alt="Interior residencial premium con planos arquitectónicos sobre una mesa"
+        />
+        <div class="hero-overlay" aria-hidden="true"></div>
+        <div class="hero-content">
+          <p class="eyebrow">Asesoría inmobiliaria personalizada</p>
+          <h1 id="hero-title">Te ayudo a tomar una mejor decisión inmobiliaria.</h1>
+          <p class="hero-subtitle">
+            Soy Ehecatl Milian, asesor inmobiliario en Century 21 Edyfico. Antes de
+            ofrecerte una propiedad, una estrategia de venta o una recomendación,
+            quiero entender bien tu situación.
+          </p>
+          <p class="hero-warm">
+            Comprar, vender, rentar o invertir no es una decisión cualquiera. Por eso
+            prefiero escuchar primero, ordenar tu caso y después orientarte con más claridad.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#asesoria">Empezar asesoría</a>
+            <button class="button button-secondary" type="button" data-whatsapp-quick>
+              Contactar por WhatsApp
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="trust-section" aria-label="Forma de trabajo">
+        <div class="trust-grid">
+          <article class="trust-card">
+            <span class="trust-number">01</span>
+            <p>Primero entiendo tu caso, no te mando opciones al azar.</p>
+          </article>
+          <article class="trust-card">
+            <span class="trust-number">02</span>
+            <p>Te oriento según compra, venta, renta o inversión.</p>
+          </article>
+          <article class="trust-card">
+            <span class="trust-number">03</span>
+            <p>Seguimiento claro por WhatsApp o llamada.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="advice-section" id="asesoria" aria-labelledby="form-title">
+        <div class="section-heading">
+          <p class="eyebrow">Asesoría inicial</p>
+          <h2 id="form-title">Primero te escucho, después perfilamos opciones.</h2>
+        </div>
+
+        <div class="form-shell">
+          <div class="progress-area" aria-live="polite">
+            <div class="progress-meta">
+              <span id="progressLabel">Paso 1</span>
+              <span id="progressPercent">0%</span>
+            </div>
+            <div class="progress-track" aria-hidden="true">
+              <span id="progressBar" class="progress-bar"></span>
+            </div>
+          </div>
+
+          <form id="advisoryForm" class="question-card" novalidate>
+            <div id="questionMount"></div>
+            <p id="formError" class="form-error" role="alert" hidden></p>
+            <div class="form-actions">
+              <button id="backButton" class="button button-ghost" type="button">
+                Regresar
+              </button>
+              <button id="nextButton" class="button button-primary" type="submit">
+                Continuar
+              </button>
+            </div>
+          </form>
+
+          <section id="finishScreen" class="finish-card" hidden aria-labelledby="finish-title">
+            <p class="eyebrow">Solicitud recibida</p>
+            <h2 id="finish-title">Gracias, ya puedo orientarte mejor.</h2>
+            <p id="finishMessage">
+              Gracias por compartir tu información. Revisaré tus respuestas y me pondré
+              en contacto contigo para ayudarte según tu objetivo inmobiliario.
+            </p>
+            <button id="sendWhatsappButton" class="button button-primary" type="button">
+              Enviar por WhatsApp
+            </button>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Century 21 Edyfico · Ehecatl Milian</p>
+      <div class="footer-actions">
+        <a href="aviso-privacidad.html" target="_blank" rel="noopener noreferrer">
+          Aviso de privacidad
+        </a>
+        <button type="button" data-whatsapp-quick>Contactar por WhatsApp</button>
+      </div>
+    </footer>
+
+    <noscript>
+      <p class="noscript-message">
+        Este formulario necesita JavaScript activo para funcionar correctamente.
+      </p>
+    </noscript>
+
+    <script src="script.js"></script>
+  </body>
+</html>
