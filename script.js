@@ -8,18 +8,28 @@ const baseQuestions = [
     kicker: "Antes de empezar",
     title: "Antes de empezar, ¿cómo te llamas?",
     summaryTitle: "Nombre",
-    help: "Así puedo dirigirme a ti de forma más personal durante esta asesoría.",
+    help: "Me gusta dirigirme a cada persona por su nombre, porque cada caso inmobiliario es distinto.",
     required: true,
-    placeholder: "Tu nombre",
+    placeholder: "Escribe tu nombre",
     autocomplete: "given-name",
+  },
+  {
+    id: "bienvenida_nombre",
+    type: "message",
+    kicker: ({ name }) => `Mucho gusto, ${name}`,
+    title: "Gracias por estar aquí. Vamos paso a paso.",
+    help:
+      "No tienes que tener todo claro todavía. Mi intención es ayudarte a ordenar tu idea y darte una orientación que realmente tenga sentido para ti.",
+    cta: "Continuar",
   },
   {
     id: "objetivo",
     type: "choice",
     kicker: "Primer contexto",
-    title: ({ name }) => `Mucho gusto, ${name}. ¿Qué te gustaría lograr?`,
-    summaryTitle: "¿Qué te gustaría lograr?",
-    help: "Con esto puedo entender mejor tu situación antes de recomendarte algo.",
+    title: ({ name }) => `${name}, ¿qué te gustaría resolver o lograr en este momento?`,
+    summaryTitle: "¿Qué te gustaría resolver o lograr en este momento?",
+    help:
+      "Puede ser comprar, vender, rentar, invertir o simplemente entender por dónde empezar. Elige lo que más se acerque a tu caso.",
     required: true,
     options: [
       ["comprar", "Comprar una propiedad"],
@@ -35,9 +45,10 @@ const baseQuestions = [
     id: "etapa",
     type: "choice",
     kicker: "Momento",
-    title: ({ name }) => `${name}, ¿en qué etapa estás?`,
-    summaryTitle: "¿En qué etapa estás?",
-    help: "No importa si apenas estás explorando. La idea es orientarte sin presión y con claridad.",
+    title: ({ name }) => `¿En qué punto estás ahorita, ${name}?`,
+    summaryTitle: "¿En qué punto estás ahorita?",
+    help:
+      "No importa si apenas estás viendo opciones o si ya quieres avanzar. Saber esto me ayuda a acompañarte mejor y sin presionarte.",
     required: true,
     options: [
       ["explorando", "Apenas estoy explorando"],
@@ -51,9 +62,10 @@ const baseQuestions = [
     id: "prioridad",
     type: "choice",
     kicker: "Prioridad",
-    title: "¿Qué te gustaría cuidar más en este proceso?",
-    summaryTitle: "¿Qué te gustaría cuidar más en este proceso?",
-    help: "Esta parte me ayuda a entender qué es lo más importante para ti, más allá de solo ver precios o propiedades.",
+    title: "¿Qué te gustaría cuidar más en esta decisión?",
+    summaryTitle: "¿Qué te gustaría cuidar más en esta decisión?",
+    help:
+      "Para mí no se trata solo de mostrar propiedades. También importa que te sientas seguro, bien orientado y con claridad.",
     required: true,
     options: [
       ["seguridad", "Seguridad en la operación"],
@@ -69,11 +81,11 @@ const baseQuestions = [
   {
     id: "transicion_perfilamiento",
     type: "message",
-    kicker: "Vamos bien",
-    title: ({ name }) => `Gracias, ${name}. Ya voy entendiendo mejor tu caso.`,
+    kicker: "Ya voy entendiendo mejor",
+    title: ({ name }) => `Gracias, ${name}. Con esto ya puedo ubicar mejor tu situación.`,
     help:
-      "Ahora te haré unas preguntas más específicas según lo que buscas. La idea es no hacerte perder tiempo con opciones o información que no vaya contigo.",
-    cta: "Continuar",
+      "Ahora te haré unas preguntas más específicas según lo que necesitas. Prometo hacerlo breve: la idea es no mandarte información al azar, sino darte seguimiento con intención.",
+    cta: "Vamos",
   },
 ];
 
@@ -530,6 +542,72 @@ const routeQuestions = {
   ],
 };
 
+const routeIntroductions = {
+  comprar: {
+    id: "intro_comprar",
+    type: "message",
+    kicker: "Compra",
+    title: ({ name }) => `Perfecto, ${name}.`,
+    help:
+      "Comprar una propiedad puede emocionar, pero también puede generar dudas. Vamos a aterrizar zona, presupuesto y forma de pago para que tu búsqueda tenga más dirección.",
+    cta: "Continuar",
+  },
+  vender: {
+    id: "intro_vender",
+    type: "message",
+    kicker: "Venta",
+    title: ({ name }) => `Entiendo, ${name}.`,
+    help:
+      "Vender una propiedad no debería ser solo ponerla en internet y esperar. Hay que cuidar el precio, la presentación y la estrategia para proteger tu patrimonio.",
+    cta: "Continuar",
+  },
+  rentar: {
+    id: "intro_rentar",
+    type: "message",
+    kicker: "Renta",
+    title: ({ name }) => `Claro, ${name}.`,
+    help:
+      "Buscar renta puede volverse pesado si no hay claridad. Te haré unas preguntas para entender zona, presupuesto y detalles importantes para ti.",
+    cta: "Continuar",
+  },
+  poner_renta: {
+    id: "intro_poner_renta",
+    type: "message",
+    kicker: "Poner en renta",
+    title: ({ name }) => `Muy bien, ${name}.`,
+    help:
+      "Rentar tu propiedad también implica cuidarla. La idea es buscar un buen perfil, definir una renta adecuada y hacerlo con orden.",
+    cta: "Continuar",
+  },
+  invertir: {
+    id: "intro_invertir",
+    type: "message",
+    kicker: "Inversión",
+    title: ({ name }) => `Buena decisión, ${name}.`,
+    help:
+      "En inversión inmobiliaria no todo es comprar por comprar. Conviene revisar qué buscas: plusvalía, renta mensual, seguridad patrimonial o crecimiento.",
+    cta: "Continuar",
+  },
+  valuacion: {
+    id: "intro_valuacion",
+    type: "message",
+    kicker: "Valor de propiedad",
+    title: ({ name }) => `Claro, ${name}.`,
+    help:
+      "Conocer el valor de una propiedad ayuda a tomar mejores decisiones. Vamos a revisar ubicación, características y motivo para darte una referencia con más sentido.",
+    cta: "Continuar",
+  },
+  orientacion: {
+    id: "intro_orientacion",
+    type: "message",
+    kicker: "Orientación",
+    title: ({ name }) => `Te entiendo, ${name}.`,
+    help:
+      "A veces lo más difícil es saber por dónde empezar. Vamos a ordenar tus dudas para que tengas un primer mapa claro y puedas decidir con más tranquilidad.",
+    cta: "Continuar",
+  },
+};
+
 const contactQuestions = [
   {
     id: "whatsapp",
@@ -630,7 +708,10 @@ const allRouteQuestionIds = Object.values(routeQuestions)
 function getFlow() {
   const selectedObjective = answers.objetivo?.value;
   const route = selectedObjective ? routeQuestions[selectedObjective] || [] : [];
-  return [...baseQuestions, ...route, ...contactQuestions];
+  const routeIntro = selectedObjective && routeIntroductions[selectedObjective]
+    ? [routeIntroductions[selectedObjective]]
+    : [];
+  return [...baseQuestions, ...routeIntro, ...route, ...contactQuestions];
 }
 
 function escapeHtml(value) {
@@ -785,7 +866,7 @@ function validateAndStore(question) {
   if (question.type === "choice") {
     const checked = form.querySelector(`input[name="${question.id}"]:checked`);
     if (!checked) {
-      showError("Selecciona una opción para continuar.");
+      showError("Elige la opción que más se acerque a tu caso para poder orientarte mejor.");
       return false;
     }
 
@@ -804,7 +885,7 @@ function validateAndStore(question) {
   if (question.type === "checkbox") {
     const checked = form.querySelector(`input[name="${question.id}"]`).checked;
     if (question.required && !checked) {
-      showError("Necesito tu consentimiento para poder dar seguimiento.");
+      showError("Necesito tu consentimiento para poder dar seguimiento a tu solicitud.");
       return false;
     }
 
@@ -821,8 +902,8 @@ function validateAndStore(question) {
   if (question.required && !value) {
     const message =
       question.id === "nombre"
-        ? "Dime tu nombre para poder dirigirme a ti durante la asesoría."
-        : "Completa este dato para continuar.";
+        ? "Compárteme tu nombre para poder hablarte de forma más personal."
+        : "Compárteme este dato para continuar.";
     showError(message);
     field.focus();
     return false;
@@ -837,7 +918,7 @@ function validateAndStore(question) {
   if (question.inputType === "tel") {
     const digits = value.replace(/\D/g, "");
     if (digits.length < 10 || digits.length > 15) {
-      showError("Escribe un número de WhatsApp válido.");
+      showError("Compárteme un número de WhatsApp válido para poder contactarte.");
       field.focus();
       return false;
     }
