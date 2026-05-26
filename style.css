@@ -418,6 +418,37 @@ h1 {
   font-size: 0.92rem;
 }
 
+.group-fields {
+  display: grid;
+  gap: 22px;
+  margin-top: 24px;
+}
+
+.group-field {
+  display: grid;
+  gap: 10px;
+}
+
+.group-label {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 850;
+}
+
+.group-help,
+.multi-counter {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.group-field .choices,
+.group-field .field-control,
+.group-field .checkbox-control,
+.group-field .open-field-note {
+  margin-top: 0;
+}
+
 .choices,
 .field-group {
   margin: 24px 0 0;
