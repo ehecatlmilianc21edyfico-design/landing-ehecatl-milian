@@ -3058,7 +3058,9 @@ function getStateLocationTerms(state) {
 }
 
 function hasCompatibleLocation(state, property) {
-  const propertyLocation = normalizeInventoryText(`${property.city} ${property.location}`);
+  const propertyLocation = normalizeInventoryText(
+    `${property.city} ${property.location} ${property.title} ${(property.topFeatures || []).join(" ")}`
+  );
   return getStateLocationTerms(state).some(
     (term) => propertyLocation.includes(term) || term.includes(propertyLocation)
   );
