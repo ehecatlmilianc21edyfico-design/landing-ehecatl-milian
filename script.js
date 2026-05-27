@@ -15,6 +15,25 @@ const FULL_INVENTORY_URL =
 const SUGGESTION_MIN_COMPATIBILITY_SCORE = 80;
 const MAX_SUGGESTED_PROPERTIES = 3;
 const SUGGESTION_DIAGNOSTICS_PARAM = "debugSuggestions";
+const GENERAL_LOCATION_GROUPS = [
+  {
+    id: "altozano",
+    terms: [
+      "altozano",
+      "campo de golf",
+      "club de golf",
+      "bosque monarca",
+      "canadas del bosque",
+      "cañadas del bosque",
+      "tres marias",
+      "tres marías",
+      "lomalta",
+      "faisanes",
+      "rincon",
+      "rincón",
+    ],
+  },
+];
 
 if ("scrollRestoration" in window.history) {
   window.history.scrollRestoration = "manual";
@@ -3057,12 +3076,40 @@ function getStateLocationTerms(state) {
   return [...new Set([...rawTerms, ...splitTerms])];
 }
 
+function getLocationGroupIds(text) {
+  const normalizedText = normalizeInventoryText(text);
+  if (!normalizedText) {
+    return [];
+  }
+
+  return GENERAL_LOCATION_GROUPS.filter((group) =>
+    group.terms.some((term) => normalizedText.includes(normalizeInventoryText(term)))
+  ).map((group) => group.id);
+}
+
+function haveCompatibleLocationGroup(userLocationTerms, propertyLocationText) {
+  const userGroupIds = new Set(
+    userLocationTerms.flatMap((term) => getLocationGroupIds(term))
+  );
+
+  if (!userGroupIds.size) {
+    return false;
+  }
+
+  const propertyGroupIds = getLocationGroupIds(propertyLocationText);
+  return propertyGroupIds.some((groupId) => userGroupIds.has(groupId));
+}
+
 function hasCompatibleLocation(state, property) {
   const propertyLocation = normalizeInventoryText(
     `${property.city} ${property.location} ${property.title} ${(property.topFeatures || []).join(" ")}`
   );
-  return getStateLocationTerms(state).some(
-    (term) => propertyLocation.includes(term) || term.includes(propertyLocation)
+  const locationTerms = getStateLocationTerms(state);
+
+  return (
+    locationTerms.some(
+      (term) => propertyLocation.includes(term) || term.includes(propertyLocation)
+    ) || haveCompatibleLocationGroup(locationTerms, propertyLocation)
   );
 }
 
@@ -3233,6 +3280,8 @@ function getPropertyCompatibilityBreakdown(state, property) {
   let score = 0;
   const positiveReasons = [];
   const missingReasons = [];
+  let typeCompatible = false;
+  let budgetCompatible = false;
 
   if (!isSuggestionEligibleObjective(objective)) {
     missingReasons.push("La ruta actual no aplica para sugerencias.");
@@ -3246,11 +3295,12 @@ function getPropertyCompatibilityBreakdown(state, property) {
     missingReasons.push("Operación no compatible o no definida: +0.");
   }
 
-  if (hasCompatibleType(state, property)) {
+  typeCompatible = hasCompatibleType(state, property);
+  if (typeCompatible) {
     score += 20;
     positiveReasons.push("Tipo de propiedad compatible: +20.");
   } else {
-    missingReasons.push("Tipo de propiedad no compatible o no definido: +0.");
+    missingReasons.push("Tipo de propiedad no compatible o no definido: +0. Requisito estricto.");
   }
 
   if (hasCompatibleLocation(state, property)) {
@@ -3260,11 +3310,12 @@ function getPropertyCompatibilityBreakdown(state, property) {
     missingReasons.push("Zona/ciudad no compatible o no definida: +0.");
   }
 
-  if (hasCompatibleBudget(state, property)) {
+  budgetCompatible = hasCompatibleBudget(state, property);
+  if (budgetCompatible) {
     score += 20;
     positiveReasons.push("Presupuesto compatible: +20.");
   } else {
-    missingReasons.push("Presupuesto fuera de rango, no definido o sin precio comparable: +0.");
+    missingReasons.push("Presupuesto fuera de rango, no definido o sin precio comparable: +0. Requisito estricto.");
   }
 
   if (hasCompatibleDetails(state, property)) {
@@ -3274,7 +3325,7 @@ function getPropertyCompatibilityBreakdown(state, property) {
     missingReasons.push("Recámaras, baños o tags sin coincidencia suficiente: +0.");
   }
 
-  return { score, positiveReasons, missingReasons };
+  return { score, positiveReasons, missingReasons, typeCompatible, budgetCompatible };
 }
 
 function getPropertyCompatibilityScore(state, property) {
@@ -3305,7 +3356,11 @@ function logSuggestionDiagnostics(state, scoredProperties) {
       compatibilityScore: item.score,
       suggested:
         item.property.active !== false &&
+        item.typeCompatible &&
+        item.budgetCompatible &&
         item.score >= SUGGESTION_MIN_COMPATIBILITY_SCORE,
+      strictTypeOk: Boolean(item.typeCompatible),
+      strictBudgetOk: Boolean(item.budgetCompatible),
       reasonsAdded: item.positiveReasons.join(" "),
       reasonsMissing: item.missingReasons.join(" "),
     }))
@@ -3339,6 +3394,8 @@ function getSuggestedProperties(leadContext, properties) {
       score: breakdown.score,
       positiveReasons: breakdown.positiveReasons,
       missingReasons: breakdown.missingReasons,
+      typeCompatible: breakdown.typeCompatible,
+      budgetCompatible: breakdown.budgetCompatible,
       index,
     };
   });
@@ -3349,6 +3406,8 @@ function getSuggestedProperties(leadContext, properties) {
     .filter(
       (item) =>
         isActiveProperty(item.property) &&
+        item.typeCompatible &&
+        item.budgetCompatible &&
         item.score >= SUGGESTION_MIN_COMPATIBILITY_SCORE
     )
     .sort((a, b) => b.score - a.score || a.index - b.index)
