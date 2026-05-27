@@ -12,6 +12,8 @@ const PRIVACY_CONSENT_TEXT = "He leído y acepto el Aviso de Privacidad.";
 const PROPERTY_DATA_URL = "data/properties.json";
 const FULL_INVENTORY_URL =
   "https://century21mexico.com/busqueda/oficina_632-century-21-edyfico_local";
+const SUGGESTION_MIN_COMPATIBILITY_SCORE = 80;
+const MAX_SUGGESTED_PROPERTIES = 3;
 
 if ("scrollRestoration" in window.history) {
   window.history.scrollRestoration = "manual";
@@ -2902,9 +2904,12 @@ function normalizeInventoryText(value) {
 }
 
 function normalizeProperty(rawProperty) {
+  const tagFeatures = Array.isArray(rawProperty.tags)
+    ? rawProperty.tags.map((feature) => sanitizeText(feature, 80)).filter(Boolean)
+    : [];
   const topFeatures = Array.isArray(rawProperty.topFeatures)
     ? rawProperty.topFeatures.map((feature) => sanitizeText(feature, 80)).filter(Boolean)
-    : [];
+    : tagFeatures;
   const rawImages = Array.isArray(rawProperty.images) ? rawProperty.images : [];
   const facadeImage = sanitizeText(rawProperty.facadeImage || "", 300);
   const legacyImage = sanitizeText(rawProperty.image || "", 300);
@@ -2919,6 +2924,8 @@ function normalizeProperty(rawProperty) {
   const coverImage = facadeImage || submittedCoverImage || uniqueImages[0] || "";
   const needsImageReview =
     Boolean(rawProperty.needsImageReview) || Boolean(coverImage && !facadeImage);
+  const zone = sanitizeText(rawProperty.zone || rawProperty.location || "", 160);
+  const active = rawProperty.active !== false;
 
   return {
     id: sanitizeText(rawProperty.id || "", 120),
@@ -2927,7 +2934,8 @@ function normalizeProperty(rawProperty) {
     type: normalizeInventoryText(rawProperty.type || ""),
     price: Number.isFinite(Number(rawProperty.price)) ? Number(rawProperty.price) : 0,
     priceText: sanitizeText(rawProperty.priceText || "", 80),
-    location: sanitizeText(rawProperty.location || "", 160),
+    location: zone,
+    zone,
     city: sanitizeText(rawProperty.city || "", 100),
     bedrooms: rawProperty.bedrooms ?? null,
     bathrooms: rawProperty.bathrooms ?? null,
@@ -2942,13 +2950,15 @@ function normalizeProperty(rawProperty) {
     url: sanitizeText(rawProperty.url || "", 500),
     source: sanitizeText(rawProperty.source || "", 120),
     fetchedAt: sanitizeText(rawProperty.fetchedAt || "", 80),
-    status: normalizeInventoryText(rawProperty.status || "activa"),
+    active,
+    status: active ? normalizeInventoryText(rawProperty.status || "activa") : "inactiva",
     needsImageReview,
   };
 }
 
 function isActiveProperty(property) {
-  return !["vendida", "rentada", "inactiva"].includes(normalizeInventoryText(property.status));
+  return property.active !== false &&
+    !["vendida", "rentada", "inactiva"].includes(normalizeInventoryText(property.status));
 }
 
 function getPropertyImages(property) {
@@ -3030,12 +3040,20 @@ function getInventoryNeedTerms(state) {
 }
 
 function getStateLocationTerms(state) {
-  return [
+  const rawTerms = [
     getStateLabel(state, "ciudad"),
     getFirstStateLabel(state, LOCATION_FIELD_IDS),
   ]
     .map(normalizeInventoryText)
     .filter((term) => term.length > 3);
+  const splitTerms = rawTerms.flatMap((term) =>
+    term
+      .split(/[^a-z0-9\u00f1]+/i)
+      .map(normalizeInventoryText)
+      .filter((item) => item.length > 3)
+  );
+
+  return [...new Set([...rawTerms, ...splitTerms])];
 }
 
 function hasCompatibleLocation(state, property) {
@@ -3046,6 +3064,7 @@ function hasCompatibleLocation(state, property) {
 }
 
 function hasCompatibleType(state, property) {
+  const objective = getStateValue(state, "objetivo");
   const wantedType = normalizeInventoryText(getFirstStateValue(state, PROPERTY_TYPE_FIELD_IDS));
   const propertyType = normalizeInventoryText(property.type);
 
@@ -3053,7 +3072,26 @@ function hasCompatibleType(state, property) {
     return false;
   }
 
-  return propertyType.includes(wantedType) || wantedType.includes(propertyType);
+  const compatibleTypes = {
+    casa: ["casa", "casa-en-condominio", "casa en condominio"],
+    departamento: ["departamento", "penthouse"],
+    terreno: ["terreno"],
+    local_oficina: ["local", "oficina", "oficinas", "edificio", "bodega", "inmueble-productivo"],
+    comercial: ["local", "oficina", "oficinas", "edificio", "bodega", "inmueble-productivo"],
+    residencial: ["casa", "casa-en-condominio", "departamento"],
+    preventas: ["casa", "casa-en-condominio", "departamento"],
+  };
+  const expectedTypes = compatibleTypes[wantedType] || [wantedType];
+
+  if (objective === "invertir" && wantedType === "quiero_comparar") {
+    return ["terreno", "departamento", "casa", "casa-en-condominio"].some((type) =>
+      propertyType.includes(type)
+    );
+  }
+
+  return expectedTypes.some(
+    (type) => propertyType.includes(type) || type.includes(propertyType)
+  );
 }
 
 function hasCompatibleFeature(state, property) {
@@ -3067,94 +3105,173 @@ function hasCompatibleFeature(state, property) {
   return needTerms.some((term) => featureText.includes(term) || term.includes(featureText));
 }
 
-function getPropertyRecommendationScore(state, property) {
+function getBudgetRangeForState(state) {
+  const budgetRanges = {
+    comprar_presupuesto: {
+      menos_1_5m: [0, 1500000],
+      "1_5m_3m": [1500000, 3000000],
+      "3m_5m": [3000000, 5000000],
+      "5m_8m": [5000000, 8000000],
+      mas_8m: [8000000, Infinity],
+    },
+    rentar_presupuesto: {
+      menos_4k: [0, 4000],
+      "4k_8k": [4000, 8000],
+      "8k_12k": [8000, 12000],
+      "12k_15k": [12000, 15000],
+      "15k_20k": [15000, 20000],
+      mas_20k: [20000, Infinity],
+    },
+    rentar_presupuesto_comercial: {
+      menos_5k: [0, 5000],
+      "5k_10k": [5000, 10000],
+      "10k_15k": [10000, 15000],
+      mas_15k: [15000, Infinity],
+    },
+    invertir_monto: {
+      menos_1m: [0, 1000000],
+      "1m_3m": [1000000, 3000000],
+      "3m_5m": [3000000, 5000000],
+      "5m_10m": [5000000, 10000000],
+      mas_10m: [10000000, Infinity],
+    },
+  };
+
+  for (const [fieldId, ranges] of Object.entries(budgetRanges)) {
+    const selectedValue = getStateValue(state, fieldId);
+    if (selectedValue && ranges[selectedValue]) {
+      return ranges[selectedValue];
+    }
+  }
+
+  return null;
+}
+
+function hasCompatibleBudget(state, property) {
+  const range = getBudgetRangeForState(state);
+  const price = Number(property.price);
+
+  if (!range || !Number.isFinite(price) || price <= 0) {
+    return false;
+  }
+
+  const [min, max] = range;
+  return price >= min && price <= max;
+}
+
+function getRequestedNumber(state, fieldIds) {
+  for (const fieldId of fieldIds) {
+    const value = getStateValue(state, fieldId);
+    if (!value || value === "flexible" || value === "no_se" || value === "no_aplica") {
+      continue;
+    }
+
+    if (value === "4_mas" || value === "3_mas" || value === "2_mas") {
+      return Number(value.charAt(0));
+    }
+
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+
+  return null;
+}
+
+function hasCompatibleDetails(state, property) {
+  const requestedBedrooms = getRequestedNumber(state, [
+    "comprar_recamaras",
+    "vender_recamaras",
+    "valuacion_recamaras",
+  ]);
+  const requestedBathrooms = getRequestedNumber(state, [
+    "comprar_banos",
+    "vender_banos",
+    "valuacion_banos",
+  ]);
+
+  if (
+    requestedBedrooms !== null &&
+    Number(property.bedrooms) >= requestedBedrooms
+  ) {
+    return true;
+  }
+
+  if (
+    requestedBathrooms !== null &&
+    Number(property.bathrooms) >= requestedBathrooms
+  ) {
+    return true;
+  }
+
+  return hasCompatibleFeature(state, property);
+}
+
+function isSuggestionEligibleObjective(objective) {
+  return ["comprar", "rentar", "invertir"].includes(objective);
+}
+
+function getPropertyCompatibilityScore(state, property) {
   const objective = getStateValue(state, "objetivo");
   const operationPreference = getPropertyOperationPreference(objective);
   let score = 0;
 
+  if (!isSuggestionEligibleObjective(objective)) {
+    return 0;
+  }
+
   if (operationPreference && property.operation === operationPreference) {
-    score += 20;
-  }
-
-  if (
-    objective === "invertir" &&
-    property.operation === "venta" &&
-    ["terreno", "departamento", "local", "local_oficina"].includes(property.type)
-  ) {
-    score += 12;
-  }
-
-  if (
-    objective === "invertir" &&
-    property.topFeatures.some((feature) =>
-      /plusval[ií]a|renta|inversi[oó]n|rendimiento/i.test(feature)
-    )
-  ) {
-    score += 8;
-  }
-
-  if (hasCompatibleLocation(state, property)) {
-    score += 10;
+    score += 30;
   }
 
   if (hasCompatibleType(state, property)) {
-    score += 8;
+    score += 20;
   }
 
-  if (hasCompatibleFeature(state, property)) {
-    score += 6;
+  if (hasCompatibleLocation(state, property)) {
+    score += 20;
   }
 
-  if (property.facadeImage) {
-    score += 6;
-  } else if (hasPropertyImage(property)) {
-    score += 4;
+  if (hasCompatibleBudget(state, property)) {
+    score += 20;
+  }
+
+  if (hasCompatibleDetails(state, property)) {
+    score += 10;
   }
 
   return score;
 }
 
-function getRecommendedProperties(state, properties) {
-  const activeProperties = properties.filter(isActiveProperty);
+function getSuggestedProperties(leadContext, properties) {
+  const state = leadContext && leadContext.intent ? answers : leadContext;
 
-  if (!activeProperties.length) {
+  if (!state) {
     return [];
   }
 
-  if (!state || !getStateValue(state, "objetivo")) {
-    return activeProperties
-      .map((property, index) => ({ property, index }))
-      .sort(
-        (a, b) =>
-          Number(hasPropertyImage(b.property)) - Number(hasPropertyImage(a.property)) ||
-          a.index - b.index
-      )
-      .slice(0, 3)
-      .map((item) => item.property);
+  const objective = getStateValue(state, "objetivo");
+
+  if (!isSuggestionEligibleObjective(objective)) {
+    return [];
   }
 
-  const scoredProperties = activeProperties
+  return properties
+    .filter(isActiveProperty)
     .map((property, index) => ({
       property,
-      score: getPropertyRecommendationScore(state, property),
+      score: getPropertyCompatibilityScore(state, property),
       index,
     }))
-    .sort((a, b) => b.score - a.score || a.index - b.index);
-  const matches = scoredProperties.filter((item) => item.score > 0);
-
-  if (matches.length) {
-    return matches.slice(0, 6).map((item) => item.property);
-  }
-
-  return activeProperties
-    .map((property, index) => ({ property, index }))
-    .sort(
-      (a, b) =>
-        Number(hasPropertyImage(b.property)) - Number(hasPropertyImage(a.property)) ||
-        a.index - b.index
-    )
-    .slice(0, 3)
+    .filter((item) => item.score >= SUGGESTION_MIN_COMPATIBILITY_SCORE)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, MAX_SUGGESTED_PROPERTIES)
     .map((item) => item.property);
+}
+
+function getRecommendedProperties(state, properties) {
+  return getSuggestedProperties(state, properties);
 }
 
 function getLeadPropertySummary(property) {
@@ -3380,26 +3497,16 @@ function createPropertyMedia(property) {
 function createPropertyActions(property) {
   const actions = createNode("div", "property-actions");
 
-  if (property.url) {
-    const link = createNode("a", "button button-ghost", "Ver propiedad");
-    link.href = property.url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.addEventListener("click", trackInventoryClicked);
-    actions.appendChild(link);
-  } else {
-    const pending = createNode("button", "button button-disabled", "Ficha pendiente");
-    pending.type = "button";
-    pending.disabled = true;
-    actions.appendChild(pending);
+  if (!property.url) {
+    return actions;
   }
 
-  const askButton = createNode("button", "button button-primary", "Preguntar por esta opción");
-  askButton.type = "button";
-  askButton.addEventListener("click", () => {
-    openPropertyWhatsapp(property);
-  });
-  actions.appendChild(askButton);
+  const link = createNode("a", "button button-ghost", "Ver propiedad");
+  link.href = property.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.addEventListener("click", trackInventoryClicked);
+  actions.appendChild(link);
 
   return actions;
 }
