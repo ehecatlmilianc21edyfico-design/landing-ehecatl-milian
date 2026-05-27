@@ -141,6 +141,18 @@ const HIGH_RISK_LAND_STATUS = new Set([
 
 const baseQuestions = [
   {
+    id: "nombre",
+    type: "text",
+    inputType: "text",
+    kicker: "Antes de empezar",
+    title: "Antes de empezar, ¿cómo te llamas?",
+    summaryTitle: "Nombre",
+    help: "Me gusta dirigirme a cada persona por su nombre, porque cada caso inmobiliario es distinto.",
+    required: true,
+    placeholder: "Escribe tu nombre",
+    autocomplete: "given-name",
+  },
+  {
     id: "objetivo",
     type: "choice",
     kicker: "Primer paso",
@@ -156,7 +168,6 @@ const baseQuestions = [
       ["poner_renta", "Poner en renta una propiedad"],
       ["valuacion", "Saber cuánto vale mi propiedad"],
       ["invertir", "Invertir en bienes raíces"],
-      ["terreno", "Tengo un terreno"],
       ["orientacion", "No sé por dónde empezar"],
     ],
   },
@@ -201,7 +212,7 @@ const routeQuestions = {
       fields: [
         { id: "comprar_presupuesto", type: "choice", label: "Presupuesto aproximado", required: true, options: [["menos_1_5m", "Menos de $1.5 M"], ["1_5m_3m", "$1.5 M a $3 M"], ["3m_5m", "$3 M a $5 M"], ["5m_8m", "$5 M a $8 M"], ["mas_8m", "Más de $8 M"], ["por_definir", "Aún por definir"]] },
         { id: "comprar_pago", type: "choice", label: "Forma de pago", required: true, options: [["credito_bancario", "Crédito hipotecario"], ["infonavit_fovissste", "Infonavit o Fovissste"], ["recursos_propios", "Recursos propios"], ["mixto", "Mixto"], ["necesito_orientacion", "Necesito orientación"]] },
-        { id: "comprar_credito_estado", type: "choice", label: "¿Ya tienes alguna preaprobación o precalificación de crédito?", required: true, options: CREDIT_STATUS_OPTIONS },
+        { id: "comprar_credito_estado", type: "choice", label: "¿Ya tienes alguna preaprobación o precalificación de crédito?", required: true, showIf: { id: "comprar_pago", values: ["credito_bancario", "infonavit_fovissste", "mixto", "necesito_orientacion"] }, options: CREDIT_STATUS_OPTIONS },
       ],
     },
     {
@@ -323,7 +334,7 @@ const routeQuestions = {
       title: "¿Qué propiedad quieres poner en renta y dónde está?",
       help: "Con esto puedo pensar en el perfil de inquilino y estrategia de promoción adecuada.",
       fields: [
-        { id: "poner_renta_tipo", type: "choice", label: "Tipo de propiedad", required: true, options: [["casa", "Casa"], ["departamento", "Departamento"], ["local_oficina", "Local u oficina"], ["bodega", "Bodega"], ["otro", "Otro"]] },
+        { id: "poner_renta_tipo", type: "choice", label: "Tipo de propiedad", required: true, options: [["casa", "Casa"], ["departamento", "Departamento"], ["terreno", "Terreno"], ["local_oficina", "Local u oficina"], ["bodega", "Bodega"], ["otro", "Otro"]] },
         { id: "poner_renta_ubicacion", type: "textarea", label: "Zona o colonia", required: true, placeholder: "Zona o colonia, ciudad o referencia general" },
       ],
     },
@@ -558,25 +569,15 @@ const routeQuestions = {
 
 const contactQuestions = [
   {
-    id: "preferencia_contacto",
-    type: "group",
-    kicker: "Seguimiento",
-    title: "Para darte seguimiento, dime cómo prefieres que te contacte.",
-    help: "Con esto puedo continuar la conversación por el medio y horario que te resulten más cómodos.",
-    fields: [
-      { id: "prioridad", type: "choice", label: "¿Qué te gustaría cuidar más en esta decisión?", required: true, options: HOME_NEEDS_OPTIONS },
-      { id: "nombre", type: "text", inputType: "text", label: "Nombre", required: true, placeholder: "Escribe tu nombre", autocomplete: "given-name" },
-      { id: "medio_contacto", type: "choice", label: "Medio preferido", required: true, options: [["whatsapp", "WhatsApp"], ["llamada", "Llamada"], ["correo", "Correo electrónico"], ["cualquiera", "El que sea más práctico"]] },
-      { id: "horario_contacto", type: "choice", label: "Horario preferido", required: true, options: [["manana", "Mañana"], ["mediodia", "Mediodía"], ["tarde", "Tarde"], ["noche", "Noche"], ["flexible", "Horario flexible"]] },
-    ],
-  },
-  {
     id: "contacto_final",
     type: "group",
     kicker: "Datos de contacto",
     title: ({ name }) => `Listo, ${name}. ¿Dónde puedo darte seguimiento?`,
     help: "Con esto puedo contactarte sin que tengas que repetir todo lo que ya me compartiste.",
     fields: [
+      { id: "prioridad", type: "choice", label: "¿Qué te gustaría cuidar más en esta decisión?", required: true, options: HOME_NEEDS_OPTIONS },
+      { id: "medio_contacto", type: "choice", label: "Medio preferido", required: true, options: [["whatsapp", "WhatsApp"], ["llamada", "Llamada"], ["correo", "Correo electrónico"], ["cualquiera", "El que sea más práctico"]] },
+      { id: "horario_contacto", type: "choice", label: "Horario preferido", required: true, options: [["manana", "Mañana"], ["mediodia", "Mediodía"], ["tarde", "Tarde"], ["noche", "Noche"], ["flexible", "Horario flexible"]] },
       { id: "whatsapp", type: "text", inputType: "tel", label: "WhatsApp", required: true, placeholder: "Ej. 55 1234 5678", autocomplete: "tel" },
       { id: "ciudad", type: "text", inputType: "text", label: "Ciudad", required: true, placeholder: "Ciudad y estado", autocomplete: "address-level2" },
       { id: "correo", type: "text", inputType: "email", label: "Correo electrónico opcional", required: false, placeholder: "tu@correo.com", autocomplete: "email" },
@@ -835,6 +836,25 @@ function getQuestionIds(question) {
 
 function getAnswerValue(id) {
   return answers[id]?.value;
+}
+
+function getShowIfRuleIds(rule) {
+  if (!rule) {
+    return [];
+  }
+
+  if (Array.isArray(rule)) {
+    return rule.flatMap(getShowIfRuleIds);
+  }
+
+  return rule.id ? [rule.id] : [];
+}
+
+function groupHasDependentField(question, fieldId) {
+  return (
+    question?.type === "group" &&
+    question.fields.some((field) => getShowIfRuleIds(field.showIf).includes(fieldId))
+  );
 }
 
 function matchesShowIf(rule) {
@@ -2915,6 +2935,8 @@ function renderFieldControl(question) {
 function renderChoiceList(question, saved) {
   const fieldset = createNode("fieldset", "choices");
   const grid = createNode("div", "choices-grid");
+  const currentQuestion = getFlow()[currentIndex];
+  const shouldRefreshGroup = groupHasDependentField(currentQuestion, question.id);
 
   question.options.forEach((option) => {
     const item = optionToObject(option);
@@ -2926,6 +2948,14 @@ function renderChoiceList(question, saved) {
     input.name = question.id;
     input.value = item.value;
     input.checked = saved?.value === item.value;
+    input.addEventListener("change", () => {
+      if (!shouldRefreshGroup) {
+        return;
+      }
+
+      storeDraftAnswersForQuestion(currentQuestion);
+      renderQuestion({ shouldScroll: false, shouldFocus: false });
+    });
 
     label.append(input, text);
     grid.appendChild(label);
@@ -3198,6 +3228,80 @@ function canSubmit() {
   }
 
   return true;
+}
+
+function storeDraftAnswersForQuestion(question) {
+  if (!question) {
+    return;
+  }
+
+  if (question.type === "group") {
+    getVisibleFields(question).forEach(storeDraftAnswerForField);
+    return;
+  }
+
+  storeDraftAnswerForField(question);
+}
+
+function storeDraftAnswerForField(question) {
+  if (question.type === "choice") {
+    const checked = form.querySelector(`input[name="${question.id}"]:checked`);
+    if (!checked) {
+      return;
+    }
+
+    const selected = question.options.map(optionToObject).find((item) => item.value === checked.value);
+    if (selected) {
+      answers[question.id] = selected;
+      syncInternalFlags(question, selected);
+    }
+    return;
+  }
+
+  if (question.type === "multichoice") {
+    const values = [...form.querySelectorAll(`input[name="${question.id}"]:checked`)].map(
+      (input) => input.value
+    );
+    const labels = getSelectedLabels(question, values);
+    const answer = {
+      value: values,
+      label: labels.join(", ") || "No proporcionado",
+    };
+
+    answers[question.id] = answer;
+    syncInternalFlags(question, answer);
+    return;
+  }
+
+  if (question.type === "checkbox") {
+    const checkbox = form.querySelector(`input[name="${question.id}"]`);
+    if (!checkbox) {
+      return;
+    }
+
+    answers[question.id] = {
+      value: checkbox.checked,
+      label: checkbox.checked ? "Aceptado" : "No aceptado",
+    };
+    syncInternalFlags(question, answers[question.id]);
+    return;
+  }
+
+  const field = form.querySelector(`[name="${question.id}"]`);
+  if (!field) {
+    return;
+  }
+
+  const value =
+    question.inputType === "tel"
+      ? normalizePhone(field.value)
+      : sanitizeText(field.value, getMaxLengthForQuestion(question));
+
+  answers[question.id] = {
+    value,
+    label: value || "No proporcionado",
+  };
+  syncInternalFlags(question, answers[question.id]);
 }
 
 function validateAndStore(question) {
