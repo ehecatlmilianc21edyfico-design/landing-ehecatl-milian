@@ -2611,10 +2611,23 @@ function buildMakeLeadPayload(leadPayload) {
   const telegram = buildTelegramPayload(crmPayload);
 
   return {
+    telegramMessage: telegram.message,
+    telegram_message: telegram.message,
     ...crmPayload,
     telegram,
-    telegramMessage: telegram.message,
   };
+}
+
+function ensureTelegramMessage(crmPayload) {
+  if (!crmPayload) {
+    return null;
+  }
+
+  const telegram = crmPayload.telegram || buildTelegramPayload(crmPayload);
+  crmPayload.telegram = telegram;
+  crmPayload.telegramMessage = telegram.message;
+  crmPayload.telegram_message = telegram.message;
+  return crmPayload;
 }
 
 function validateLeadPayloadForCrm(leadPayload) {
@@ -2756,7 +2769,7 @@ async function submitLead(leadPayload) {
 
   const submittedAt = new Date().toISOString();
   setLeadCrmStatus(leadPayload, "submitted", submittedAt);
-  const crmPayload = buildMakeLeadPayload(leadPayload);
+  const crmPayload = ensureTelegramMessage(buildMakeLeadPayload(leadPayload));
   const webhookUrl = getCrmEndpoint();
 
   try {
@@ -2766,6 +2779,7 @@ async function submitLead(leadPayload) {
       acceptedPrivacy: crmPayload.consent?.acceptedPrivacy === true,
       hasName: Boolean(crmPayload.contact?.nombre),
       hasWhatsapp: Boolean(crmPayload.contact?.whatsapp),
+      hasTelegramMessage: Boolean(crmPayload.telegramMessage),
     });
     console.log("Webhook CRM configurado:", Boolean(webhookUrl));
     const response = await fetch(webhookUrl, {
