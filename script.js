@@ -896,6 +896,18 @@ function isQuestionVisible(question) {
   return true;
 }
 
+function isFinalSubmitStep(question, flow) {
+  return question?.id === "contacto_final" && currentIndex === flow.length - 1;
+}
+
+function getPrimaryButtonText(question, flow) {
+  if (question.cta) {
+    return question.cta;
+  }
+
+  return isFinalSubmitStep(question, flow) ? "Terminar asesoría" : "Siguiente";
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -2822,8 +2834,7 @@ function renderQuestion({ shouldScroll = false, shouldFocus = false } = {}) {
   lastStepViewed = question.id;
   formError.hidden = true;
   formError.textContent = "";
-  nextButton.textContent =
-    question.cta || (currentIndex === flow.length - 1 ? "Terminar asesoría" : "Continuar");
+  nextButton.textContent = getPrimaryButtonText(question, flow);
   backButton.hidden = currentIndex === 0;
 
   const title = formatCopy(question.title);
