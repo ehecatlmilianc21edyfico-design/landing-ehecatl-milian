@@ -586,7 +586,7 @@ const contactQuestions = [
       { id: "prioridad", type: "choice", label: "¿Qué te gustaría cuidar más en esta decisión?", required: true, options: HOME_NEEDS_OPTIONS },
       { id: "medio_contacto", type: "choice", label: "Medio preferido", required: true, options: [["whatsapp", "WhatsApp"], ["llamada", "Llamada"], ["correo", "Correo electrónico"], ["cualquiera", "El que sea más práctico"]] },
       { id: "horario_contacto", type: "choice", label: "Horario preferido", required: true, options: [["manana", "Mañana"], ["mediodia", "Mediodía"], ["tarde", "Tarde"], ["noche", "Noche"], ["flexible", "Horario flexible"]] },
-      { id: "whatsapp", type: "text", inputType: "tel", label: "WhatsApp", required: true, placeholder: "Ej. 55 1234 5678", autocomplete: "tel" },
+      { id: "whatsapp", type: "text", inputType: "tel", label: "WhatsApp", required: false, placeholder: "Ej. 55 1234 5678", autocomplete: "tel" },
       { id: "ciudad", type: "text", inputType: "text", label: "Ciudad", required: true, placeholder: "Ciudad y estado", autocomplete: "address-level2" },
       { id: "correo", type: "text", inputType: "email", label: "Correo electrónico opcional", required: false, placeholder: "tu@correo.com", autocomplete: "email" },
       { id: "consentimiento", type: "checkbox", label: "Consentimiento", required: true },
@@ -1475,11 +1475,25 @@ function getPaymentScore(state) {
 }
 
 function getCreditStatusValue(state) {
-  return getFirstStateValue(state, CREDIT_STATUS_FIELD_IDS);
+  const creditStatus = getFirstStateValue(state, CREDIT_STATUS_FIELD_IDS);
+  const paymentMethod = getStateValue(state, "comprar_pago");
+
+  if (creditStatus) {
+    return creditStatus;
+  }
+
+  return paymentMethod === "recursos_propios" ? "recursos_propios" : "";
 }
 
 function getCreditStatusLabel(state) {
-  return getFirstStateLabel(state, CREDIT_STATUS_FIELD_IDS);
+  const creditStatusLabel = getFirstStateLabel(state, CREDIT_STATUS_FIELD_IDS);
+  const paymentMethod = getStateValue(state, "comprar_pago");
+
+  if (creditStatusLabel) {
+    return creditStatusLabel;
+  }
+
+  return paymentMethod === "recursos_propios" ? "Recursos propios" : "";
 }
 
 function getCreditType(value) {
@@ -2150,14 +2164,92 @@ function setLeadCrmStatus(leadPayload, status, submittedAt = "") {
     return;
   }
 
+  if (submittedAt) {
+    leadPayload.submittedAt = submittedAt;
+  }
+
   leadPayload.crm = buildCrmPayloadStatus(status, submittedAt);
 }
 
-function validateLeadPayloadForCrm(leadPayload) {
-  const contact = leadPayload?.contact || {};
-  const objective = leadPayload?.intent?.objetivo;
+function listToCrmText(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeText(item, 200)).filter(Boolean).join("\n");
+  }
 
-  if (!leadPayload?.consent?.acceptedPrivacy) {
+  return sanitizeText(value, OPEN_FIELD_MAX_LENGTH);
+}
+
+function buildMakeLeadPayload(leadPayload) {
+  const contact = leadPayload?.contact || {};
+  const intent = leadPayload?.intent || {};
+  const qualification = leadPayload?.qualification || {};
+  const propertyContext = leadPayload?.propertyContext || {};
+  const financingReadiness = leadPayload?.financingReadiness || {};
+  const leadQuality = leadPayload?.leadQuality || {};
+  const internalNotes = leadPayload?.internalNotes || {};
+  const submittedAt = leadPayload?.submittedAt || new Date().toISOString();
+
+  return {
+    leadId: sanitizeText(leadPayload?.leadId || "", 120),
+    submittedAt,
+    contact: {
+      nombre: sanitizeText(contact.nombre, 80),
+      whatsapp: getPhoneDigits(contact.whatsapp),
+      correo: sanitizeText(contact.correo, 120),
+      ciudad: sanitizeText(contact.ciudad, 100),
+      medioPreferido: sanitizeText(contact.medioPreferido, 120),
+      horarioPreferido: sanitizeText(contact.horarioPreferido, 120),
+    },
+    intent: {
+      objetivo: sanitizeText(intent.objetivo, 80),
+      ruta: sanitizeText(intent.ruta, 80),
+    },
+    qualification: {
+      score: Number(qualification.score || 0),
+      temperatura: sanitizeText(qualification.temperatura, 120),
+      urgencia: sanitizeText(qualification.urgencia, 120),
+      accionRecomendada: sanitizeText(qualification.accionRecomendada, 300),
+    },
+    propertyContext: {
+      tipoPropiedad: sanitizeText(propertyContext.tipoPropiedad, 120),
+      zonaGeneral: sanitizeText(propertyContext.zonaGeneral, 300),
+      presupuesto: sanitizeText(propertyContext.presupuesto, 120),
+      precioEnMente: sanitizeText(propertyContext.precioEnMente, 120),
+      rentaEstimada: sanitizeText(propertyContext.rentaEstimada, 120),
+      necesidadesTop3: listToCrmText(propertyContext.necesidadesTop3),
+    },
+    financingReadiness: {
+      creditStatus: sanitizeText(financingReadiness.creditStatus, 120),
+      creditType: sanitizeText(financingReadiness.creditType, 120),
+      needsCreditGuidance: Boolean(financingReadiness.needsCreditGuidance),
+    },
+    leadQuality: {
+      calidadLead: sanitizeText(leadQuality.calidadLead, 120),
+      botRiskScore: Number(leadQuality.botRiskScore || 0),
+      shouldNotifyAdvisor: Boolean(leadQuality.shouldNotifyAdvisor),
+      shouldSendToCRM: leadQuality.shouldSendToCRM === true,
+    },
+    internalNotes: {
+      notasComerciales: listToCrmText(internalNotes.notasComerciales),
+      notasLegales: listToCrmText(internalNotes.notasLegales),
+      puntosARevisar: listToCrmText(internalNotes.puntosARevisar),
+      siguientePasoRecomendado: sanitizeText(internalNotes.siguientePasoRecomendado, 300),
+    },
+    privacyAccepted:
+      leadPayload?.privacy?.accepted === true || leadPayload?.consent?.acceptedPrivacy === true,
+    utm: leadPayload?.utm || getUtmParams(),
+  };
+}
+
+function validateLeadPayloadForCrm(leadPayload) {
+  const crmPayload = buildMakeLeadPayload(leadPayload);
+  const contact = crmPayload.contact || {};
+  const objective = crmPayload.intent?.objetivo;
+  const route = crmPayload.intent?.ruta;
+  const hasValidWhatsapp = getPhoneDigits(contact.whatsapp).length >= 10;
+  const hasValidContactEmail = isValidEmail(contact.correo);
+
+  if (crmPayload.privacyAccepted !== true) {
     return { valid: false, reason: "missing_consent" };
   }
 
@@ -2165,15 +2257,27 @@ function validateLeadPayloadForCrm(leadPayload) {
     return { valid: false, reason: "missing_name" };
   }
 
-  if (getPhoneDigits(contact.whatsapp).length < 10) {
-    return { valid: false, reason: "invalid_whatsapp" };
+  if (!hasValidWhatsapp && !hasValidContactEmail) {
+    return { valid: false, reason: "missing_contact_channel" };
   }
 
   if (!sanitizeText(objective, 80)) {
     return { valid: false, reason: "missing_objective" };
   }
 
-  if (leadPayload?.leadQuality?.shouldSendToCRM !== true) {
+  if (!sanitizeText(route, 80)) {
+    return { valid: false, reason: "missing_route" };
+  }
+
+  if (!sanitizeText(contact.medioPreferido, 120)) {
+    return { valid: false, reason: "missing_contact_preference" };
+  }
+
+  if (!sanitizeText(contact.horarioPreferido, 120)) {
+    return { valid: false, reason: "missing_contact_time" };
+  }
+
+  if (crmPayload.leadQuality?.shouldSendToCRM !== true) {
     return { valid: false, reason: "lead_quality_filtered" };
   }
 
@@ -2197,6 +2301,7 @@ function buildLeadPayload(state) {
   return {
     leadId: generateLeadId(),
     createdAt,
+    submittedAt: "",
     source: "landing-ehecatl-milian",
     pageUrl: sanitizeText(window.location.href, 500),
     contact: {
@@ -2225,6 +2330,10 @@ function buildLeadPayload(state) {
     consent: {
       acceptedPrivacy,
       privacyAcceptedAt: acceptedPrivacy ? createdAt : "",
+    },
+    privacy: {
+      accepted: acceptedPrivacy,
+      acceptedAt: acceptedPrivacy ? createdAt : "",
     },
     whatsapp: {
       shortMessage,
@@ -2275,12 +2384,14 @@ async function submitLead(leadPayload) {
 
   const submittedAt = new Date().toISOString();
   setLeadCrmStatus(leadPayload, "submitted", submittedAt);
+  const crmPayload = buildMakeLeadPayload(leadPayload);
 
   try {
+    console.log("[PerfiladorEMC21] payload enviado a Make", crmPayload);
     const response = await fetch(getCrmEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(leadPayload),
+      body: JSON.stringify(crmPayload),
       keepalive: true,
     });
 
@@ -3340,10 +3451,26 @@ function validateAndStore(question) {
       .filter((field) => !visibleFields.includes(field))
       .forEach(clearAnswerForField);
 
-    return visibleFields.every(validateFieldAndStore);
+    if (!visibleFields.every(validateFieldAndStore)) {
+      return false;
+    }
+
+    if (question.id === "contacto_final" && !hasValidContactChannel()) {
+      showError("Déjame al menos un WhatsApp válido o un correo electrónico válido para poder darte seguimiento.");
+      return false;
+    }
+
+    return true;
   }
 
   return validateFieldAndStore(question);
+}
+
+function hasValidContactChannel() {
+  const whatsapp = getStateValue(answers, "whatsapp");
+  const correo = getStateValue(answers, "correo");
+
+  return getPhoneDigits(whatsapp).length >= 10 || isValidEmail(correo);
 }
 
 function validateFieldAndStore(question) {
@@ -3420,6 +3547,15 @@ function validateFieldAndStore(question) {
   const rawValue = field.value;
 
   if (question.inputType === "tel") {
+    if (!rawValue.trim() && !question.required) {
+      answers[question.id] = {
+        value: "",
+        label: "",
+      };
+      syncInternalFlags(question, answers[question.id]);
+      return true;
+    }
+
     if (!isValidPhone(rawValue)) {
       showError("Escribe tu WhatsApp únicamente con números, de 10 a 15 dígitos.");
       field.focus();
