@@ -153,6 +153,14 @@ const baseQuestions = [
     autocomplete: "given-name",
   },
   {
+    id: "saludo_inicial",
+    type: "message",
+    kicker: "Gracias",
+    title: ({ name }) => `Hola, ${name}. No te quito mucho tiempo.`,
+    help:
+      "Solo te haré unas preguntas rápidas para entender mejor cómo puedo ayudarte.",
+  },
+  {
     id: "objetivo",
     type: "choice",
     kicker: "Primer paso",
