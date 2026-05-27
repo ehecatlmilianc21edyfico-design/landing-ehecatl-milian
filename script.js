@@ -833,9 +833,12 @@ const CRM_CONFIG = {
 };
 const ANALYTICS_CONFIG = {
   enabled: true,
-  endpoint: "https://hook.us2.make.com/xymi395w1ukif2tvfh244387fyc1xf37",
-  mode: "make",
+  endpoint: "",
+  // Make analytics webhook paused to avoid one Make operation per event:
+  // https://hook.us2.make.com/xymi395w1ukif2tvfh244387fyc1xf37
+  mode: "local",
 };
+const ANALYTICS_STORAGE_KEY = "perfilador_emc21_analytics_summary";
 const allRouteQuestionIds = [
   ...new Set([
     ...Object.values(routeQuestions).flatMap((route) => route.flatMap(getQuestionIds)),
@@ -1170,6 +1173,88 @@ function isAnalyticsReadyToSend() {
   return Boolean(ANALYTICS_CONFIG.enabled && getAnalyticsEndpoint());
 }
 
+function getEmptyAnalyticsSummary() {
+  const now = new Date().toISOString();
+  return {
+    events: {},
+    routes: {},
+    steps: {},
+    firstSeenAt: now,
+    updatedAt: now,
+  };
+}
+
+function getSafeAnalyticsKey(value, fallback = "sin_especificar") {
+  const cleaned = normalizeInventoryText(value)
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
+
+  return cleaned || fallback;
+}
+
+function readAnalyticsSummary() {
+  try {
+    const stored = window.localStorage?.getItem(ANALYTICS_STORAGE_KEY);
+    if (!stored) {
+      return getEmptyAnalyticsSummary();
+    }
+
+    const parsed = JSON.parse(stored);
+    return {
+      events: parsed?.events && typeof parsed.events === "object" ? parsed.events : {},
+      routes: parsed?.routes && typeof parsed.routes === "object" ? parsed.routes : {},
+      steps: parsed?.steps && typeof parsed.steps === "object" ? parsed.steps : {},
+      firstSeenAt: sanitizeText(parsed?.firstSeenAt || "", 40) || new Date().toISOString(),
+      updatedAt: sanitizeText(parsed?.updatedAt || "", 40) || new Date().toISOString(),
+    };
+  } catch {
+    return getEmptyAnalyticsSummary();
+  }
+}
+
+function incrementAnalyticsCounter(collection, key) {
+  collection[key] = Number(collection[key] || 0) + 1;
+}
+
+function writeAnalyticsSummary(summary) {
+  try {
+    window.localStorage?.setItem(ANALYTICS_STORAGE_KEY, JSON.stringify(summary));
+  } catch {
+    try {
+      window.sessionStorage?.setItem(ANALYTICS_STORAGE_KEY, JSON.stringify(summary));
+    } catch {
+      // Analytics must never block the form or CRM.
+    }
+  }
+}
+
+function recordAnalyticsSummary(payload) {
+  const summary = readAnalyticsSummary();
+  const eventKey = getSafeAnalyticsKey(payload.eventName || payload.event_name);
+  const routeKey = getSafeAnalyticsKey(payload.route || "sin_ruta", "sin_ruta");
+  const stepKey = getSafeAnalyticsKey(payload.stepId || payload.step_id || "sin_paso", "sin_paso");
+
+  incrementAnalyticsCounter(summary.events, eventKey);
+
+  if (routeKey !== "sin_ruta") {
+    incrementAnalyticsCounter(summary.routes, routeKey);
+  }
+
+  if (stepKey !== "sin_paso") {
+    incrementAnalyticsCounter(summary.steps, stepKey);
+  }
+
+  summary.updatedAt = new Date().toISOString();
+  writeAnalyticsSummary(summary);
+}
+
+function exportAnalyticsSummary() {
+  return readAnalyticsSummary();
+}
+
+window.exportAnalyticsSummary = exportAnalyticsSummary;
+
 function getDeviceType() {
   const width = window.innerWidth || document.documentElement.clientWidth || 0;
 
@@ -1311,38 +1396,14 @@ function buildAnalyticsPayload(eventName, eventData = {}) {
 }
 
 function sendAnalyticsPayload(payload, { useBeacon = false } = {}) {
-  const endpoint = getAnalyticsEndpoint();
-
-  if (!isAnalyticsReadyToSend()) {
-    return;
-  }
-
-  try {
-    const body = JSON.stringify(payload);
-
-    if (useBeacon && navigator.sendBeacon) {
-      const blob = new Blob([body], { type: "application/json" });
-      navigator.sendBeacon(endpoint, blob);
-      return;
-    }
-
-    fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-      keepalive: true,
-    }).catch((error) => {
-      console.error("Error al enviar analytics:", error);
-    });
-  } catch (error) {
-    console.error("Error al preparar analytics:", error);
-  }
+  void payload;
+  void useBeacon;
+  // Analytics delivery to Make is paused. Keep this function for a future weekly export flow.
 }
 
 function trackEvent(eventName, eventData = {}) {
   const payload = buildAnalyticsPayload(eventName, eventData);
-  const useBeacon = eventName === "form_abandoned";
-  sendAnalyticsPayload(payload, { useBeacon });
+  recordAnalyticsSummary(payload);
 }
 
 function trackStepViewed(stepId, stepTitle, route) {
