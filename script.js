@@ -47,6 +47,22 @@ const HOME_NEEDS_OPTIONS = [
   ["no_errores", "No cometer errores"],
 ];
 
+const RENT_HOUSING_BUDGET_OPTIONS = [
+  ["menos_4k", "Menos de $4,000"],
+  ["4k_8k", "$4,000 a $8,000"],
+  ["8k_12k", "$8,000 a $12,000"],
+  ["12k_15k", "$12,000 a $15,000"],
+  ["15k_20k", "$15,000 a $20,000"],
+  ["mas_20k", "Más de $20,000"],
+];
+
+const RENT_COMMERCIAL_BUDGET_OPTIONS = [
+  ["menos_5k", "Menos de $5,000"],
+  ["5k_10k", "$5,000 a $10,000"],
+  ["10k_15k", "$10,000 a $15,000"],
+  ["mas_15k", "Más de $15,000"],
+];
+
 const CREDIT_STATUS_OPTIONS = [
   ["credito_bancario_preaprobado", "Crédito bancario preaprobado"],
   ["precalificacion_infonavit", "Precalificación Infonavit"],
@@ -295,7 +311,6 @@ const routeQuestions = {
         { id: "vender_documentos", type: "choice", label: "Documentación declarada", required: true, options: [["en_regla", "Escrituras y pagos en regla"], ["credito_vigente", "Tiene crédito vigente"], ["requiere_revision", "Necesita revisión"], ["sucesion", "Hay sucesión o tema legal"], ["no_se", "No estoy seguro"]] },
         { id: "vender_tiempo", type: "choice", label: "Urgencia", required: true, options: [["urgente", "Lo antes posible"], ["1_3_meses", "En 1 a 3 meses"], ["3_6_meses", "En 3 a 6 meses"], ["sin_prisa", "Sin prisa, pero quiero prepararme"]] },
         { id: "vender_motivo", type: "choice", label: "Motivo principal", required: true, options: [["cambio_casa", "Cambio de casa"], ["liquidez", "Necesito liquidez"], ["inversion", "Mover inversión"], ["herencia", "Herencia o tema familiar"], ["otro", "Otro"]] },
-        { id: "vender_disposicion", type: "choice", label: "¿Te gustaría llamada o cita?", required: true, options: [["llamada", "Llamada"], ["cita", "Cita"], ["whatsapp", "Primero WhatsApp"], ["flexible", "Lo revisamos"]] },
       ],
     },
   ],
@@ -318,7 +333,8 @@ const routeQuestions = {
       title: "¿Qué rango y tiempo te funcionan?",
       fields: [
         { id: "etapa", type: "choice", label: "¿En qué punto estás ahorita?", required: true, options: STAGE_OPTIONS },
-        { id: "rentar_presupuesto", type: "choice", label: "Presupuesto mensual", required: true, options: [["menos_10k", "Menos de $10,000"], ["10k_18k", "$10,000 a $18,000"], ["18k_30k", "$18,000 a $30,000"], ["30k_50k", "$30,000 a $50,000"], ["mas_50k", "Más de $50,000"], ["por_definir", "Aún por definir"]] },
+        { id: "rentar_presupuesto", type: "choice", label: "Presupuesto mensual", required: true, showIf: { id: "rentar_tipo", values: ["casa", "departamento", "habitacion", "otro"] }, options: RENT_HOUSING_BUDGET_OPTIONS },
+        { id: "rentar_presupuesto_comercial", type: "choice", label: "Presupuesto mensual", required: true, showIf: { id: "rentar_tipo", values: ["local_oficina"] }, options: RENT_COMMERCIAL_BUDGET_OPTIONS },
         { id: "rentar_tiempo", type: "choice", label: "Fecha o tiempo de mudanza", required: true, options: [["inmediato", "De inmediato"], ["este_mes", "Este mes"], ["1_3_meses", "En 1 a 3 meses"], ["sin_fecha", "Aún no tengo fecha"]] },
       ],
     },
@@ -375,9 +391,8 @@ const routeQuestions = {
       help: "Elige hasta 3 preocupaciones y dime qué tan pronto quieres avanzar.",
       fields: [
         { id: "etapa", type: "choice", label: "¿En qué punto estás ahorita?", required: true, options: STAGE_OPTIONS },
-        { id: "poner_renta_preocupaciones", type: "multichoice", label: "Preocupaciones principales", required: true, max: 3, options: [["inquilino", "Encontrar buen inquilino"], ["pago", "Pago puntual"], ["contrato", "Contrato y seguridad legal"], ["mantenimiento", "Cuidado del inmueble"], ["precio", "Definir renta adecuada"], ["rapidez", "Rentar rápido"]] },
+        { id: "poner_renta_preocupaciones", type: "multichoice", label: "Preocupaciones principales", required: true, max: 3, options: [["rapidez", "Rentarla rápido"], ["buen_inquilino", "Conseguir buen inquilino"], ["legal", "Evitar problemas legales"], ["renta_adecuada", "Saber cuánto cobrar de renta"], ["promocion", "Promocionarla mejor"], ["administracion", "Administrar la renta"], ["orientacion", "No sé, necesito orientación"]] },
         { id: "poner_renta_urgencia", type: "choice", label: "Urgencia", required: true, options: [["urgente", "Lo antes posible"], ["1_3_meses", "En 1 a 3 meses"], ["sin_prisa", "Sin prisa"]] },
-        { id: "poner_renta_disposicion", type: "choice", label: "¿Te gustaría llamada o cita?", required: true, options: [["llamada", "Llamada"], ["cita", "Cita"], ["whatsapp", "Primero WhatsApp"], ["flexible", "Lo revisamos"]] },
       ],
     },
   ],
@@ -727,6 +742,7 @@ const PAYMENT_SCORE = {
 const BUDGET_FIELD_IDS = [
   "comprar_presupuesto",
   "rentar_presupuesto",
+  "rentar_presupuesto_comercial",
   "invertir_monto",
   "vender_precio",
   "poner_renta_precio",
@@ -763,8 +779,6 @@ const NEED_FIELD_IDS = [
 ];
 const CONTACT_PREFERENCE_FIELDS = [
   "medio_contacto",
-  "vender_disposicion",
-  "poner_renta_disposicion",
 ];
 const PROPERTY_TYPE_FIELD_IDS = [
   "comprar_tipo",
@@ -1922,7 +1936,9 @@ function buildInternalReviewNotes(state, leadQualityOverride = null) {
 
     if (
       Array.isArray(rentConcerns) &&
-      rentConcerns.some((value) => ["pago", "contrato", "mantenimiento"].includes(value))
+      rentConcerns.some((value) =>
+        ["buen_inquilino", "legal", "administracion", "pago", "contrato", "mantenimiento"].includes(value)
+      )
     ) {
       addCommercialFlag("Propietario preocupado por riesgo de inquilino");
       addCheck("Reforzar filtro de prospectos");
@@ -2107,6 +2123,7 @@ function buildPropertyContext(state) {
     presupuesto: getFirstStateLabel(state, [
       "comprar_presupuesto",
       "rentar_presupuesto",
+      "rentar_presupuesto_comercial",
       "invertir_monto",
     ]),
     precioEnMente: getFirstStateLabel(state, ["vender_precio", "valuacion_precio"]),
