@@ -12,9 +12,9 @@ const PRIVACY_CONSENT_TEXT = "He leído y acepto el Aviso de Privacidad.";
 const PROPERTY_DATA_URL = "data/properties.json";
 const FULL_INVENTORY_URL =
   "https://century21mexico.com/busqueda/oficina_632-century-21-edyfico_local";
-const SUGGESTION_MIN_COMPATIBILITY_SCORE = 80;
 const MAX_SUGGESTED_PROPERTIES = 3;
 const SUGGESTION_DIAGNOSTICS_PARAM = "debugSuggestions";
+const PRICE_MATCH_TOLERANCE = 0.1;
 const GENERAL_LOCATION_GROUPS = [
   {
     id: "altozano",
@@ -31,6 +31,16 @@ const GENERAL_LOCATION_GROUPS = [
       "faisanes",
       "rincon",
       "rincón",
+    ],
+  },
+  {
+    id: "san_pedro",
+    terms: [
+      "arko san pedro",
+      "residencial arko san pedro",
+      "san pedro",
+      "san pedro de los sauces",
+      "san pedro los sauces",
     ],
   },
 ];
@@ -366,7 +376,17 @@ const routeQuestions = {
       required: true,
       max: 3,
       statePath: "rentDetails.topNeeds",
+      showIf: { id: "rentar_tipo", values: ["casa", "departamento", "habitacion", "otro"] },
       options: [["mascotas", "Acepta mascotas"], ["estacionamiento", "Estacionamiento"], ["amueblado", "Amueblado"], ["seguridad", "Seguridad"], ["cerca_trabajo", "Cercanía a trabajo/escuela"], ["facturacion", "Facturación"], ["amenidades", "Amenidades"], ["precio", "Precio cómodo"]],
+    },
+    {
+      id: "rentar_giro_local",
+      type: "choice",
+      kicker: "Giro",
+      title: "¿Qué giro tendrá el local?",
+      required: true,
+      showIf: { id: "rentar_tipo", values: ["local_oficina"] },
+      options: [["oficina", "Oficina"], ["consultorio", "Consultorio"], ["comercio", "Comercio"], ["restaurante_cafeteria", "Restaurante / cafetería"], ["servicios", "Servicios"], ["otro", "Otro"]],
     },
   ],
   poner_renta: [
@@ -786,6 +806,7 @@ const TIME_FIELD_IDS = [
 const NEED_FIELD_IDS = [
   "comprar_necesidades",
   "rentar_necesidades",
+  "rentar_giro_local",
   "invertir_factores",
   "orientacion_top_prioridades",
   "poner_renta_preocupaciones",
@@ -3151,6 +3172,45 @@ function hasCompatibleType(state, property) {
   );
 }
 
+function getSimpleRequestedPropertyTypes(state) {
+  const objective = getStateValue(state, "objetivo");
+  const selectedType = normalizeInventoryText(getFirstStateValue(state, PROPERTY_TYPE_FIELD_IDS));
+
+  if (!selectedType || selectedType === "aun_no_se") {
+    return [];
+  }
+
+  const typeMap = {
+    casa: ["casa", "casa-en-condominio", "casa en condominio"],
+    departamento: ["departamento", "penthouse"],
+    terreno: ["terreno"],
+    local_oficina: ["local", "oficina", "oficinas"],
+    bodega: ["bodega"],
+    comercial: ["local", "oficina", "oficinas", "bodega"],
+    residencial: ["casa", "casa-en-condominio", "casa en condominio", "departamento"],
+    preventas: ["casa", "casa-en-condominio", "casa en condominio", "departamento"],
+  };
+
+  if (objective === "invertir" && selectedType === "quiero_comparar") {
+    return ["casa", "casa-en-condominio", "casa en condominio", "departamento", "terreno"];
+  }
+
+  return typeMap[selectedType] || [selectedType];
+}
+
+function hasSimpleTypeMatch(state, property) {
+  const requestedTypes = getSimpleRequestedPropertyTypes(state);
+  const propertyType = normalizeInventoryText(property.type);
+
+  if (!requestedTypes.length || !propertyType) {
+    return false;
+  }
+
+  return requestedTypes.some(
+    (type) => propertyType === type || propertyType.includes(type) || type.includes(propertyType)
+  );
+}
+
 function hasCompatibleFeature(state, property) {
   const needTerms = getInventoryNeedTerms(state);
   const featureText = normalizeInventoryText((property.topFeatures || []).join(" "));
@@ -3204,8 +3264,20 @@ function getBudgetRangeForState(state) {
   return null;
 }
 
-function hasCompatibleBudget(state, property) {
+function getToleratedPriceRange(state) {
   const range = getBudgetRangeForState(state);
+  if (!range) {
+    return null;
+  }
+
+  const [min, max] = range;
+  const toleratedMin = min > 0 ? min * (1 - PRICE_MATCH_TOLERANCE) : 0;
+  const toleratedMax = Number.isFinite(max) ? max * (1 + PRICE_MATCH_TOLERANCE) : Infinity;
+  return [toleratedMin, toleratedMax];
+}
+
+function hasCompatibleBudget(state, property) {
+  const range = getToleratedPriceRange(state);
   const price = Number(property.price);
 
   if (!range || !Number.isFinite(price) || price <= 0) {
@@ -3284,59 +3356,40 @@ function isSuggestionEligibleObjective(objective) {
 function getPropertyCompatibilityBreakdown(state, property) {
   const objective = getStateValue(state, "objetivo");
   const operationPreference = getPropertyOperationPreference(objective);
-  let score = 0;
-  const positiveReasons = [];
-  const missingReasons = [];
-  let typeCompatible = false;
-  let budgetCompatible = false;
+  const operationCompatible = Boolean(
+    operationPreference && property.operation === operationPreference
+  );
+  const typeCompatible = hasSimpleTypeMatch(state, property);
+  const locationCompatible = hasCompatibleLocation(state, property);
+  const budgetCompatible = hasCompatibleBudget(state, property);
+  const showProperty =
+    isSuggestionEligibleObjective(objective) &&
+    operationCompatible &&
+    typeCompatible &&
+    locationCompatible &&
+    budgetCompatible;
 
   if (!isSuggestionEligibleObjective(objective)) {
-    missingReasons.push("La ruta actual no aplica para sugerencias.");
-    return { score, positiveReasons, missingReasons };
+    return {
+      showProperty: false,
+      operationCompatible,
+      typeCompatible,
+      locationCompatible,
+      budgetCompatible,
+    };
   }
 
-  if (operationPreference && property.operation === operationPreference) {
-    score += 30;
-    positiveReasons.push("Operación compatible: +30.");
-  } else {
-    missingReasons.push("Operación no compatible o no definida: +0.");
-  }
-
-  typeCompatible = hasCompatibleType(state, property);
-  if (typeCompatible) {
-    score += 20;
-    positiveReasons.push("Tipo de propiedad compatible: +20.");
-  } else {
-    missingReasons.push("Tipo de propiedad no compatible o no definido: +0. Requisito estricto.");
-  }
-
-  if (hasCompatibleLocation(state, property)) {
-    score += 20;
-    positiveReasons.push("Zona/ciudad compatible: +20.");
-  } else {
-    missingReasons.push("Zona/ciudad no compatible o no definida: +0.");
-  }
-
-  budgetCompatible = hasCompatibleBudget(state, property);
-  if (budgetCompatible) {
-    score += 20;
-    positiveReasons.push("Presupuesto compatible: +20.");
-  } else {
-    missingReasons.push("Presupuesto fuera de rango, no definido o sin precio comparable: +0. Requisito estricto.");
-  }
-
-  if (hasCompatibleDetails(state, property)) {
-    score += 10;
-    positiveReasons.push("Recámaras, baños o tags compatibles: +10.");
-  } else {
-    missingReasons.push("Recámaras, baños o tags sin coincidencia suficiente: +0.");
-  }
-
-  return { score, positiveReasons, missingReasons, typeCompatible, budgetCompatible };
+  return {
+    showProperty,
+    operationCompatible,
+    typeCompatible,
+    locationCompatible,
+    budgetCompatible,
+  };
 }
 
 function getPropertyCompatibilityScore(state, property) {
-  return getPropertyCompatibilityBreakdown(state, property).score;
+  return getPropertyCompatibilityBreakdown(state, property).showProperty ? 1 : 0;
 }
 
 function logSuggestionDiagnostics(state, scoredProperties) {
@@ -3345,36 +3398,16 @@ function logSuggestionDiagnostics(state, scoredProperties) {
   }
 
   const objective = getStateValue(state, "objetivo") || "sin_ruta";
+  const compatibleIds = scoredProperties
+    .filter((item) => item.showProperty)
+    .map((item) => item.property.id);
+
   console.groupCollapsed(
-    `[MARK I.3] Diagnóstico de sugerencias inmobiliarias - ruta: ${objective}`
+    `[MARK I.3] Diagnóstico simple de sugerencias - ruta: ${objective}`
   );
-  console.table(
-    scoredProperties.map((item) => ({
-      id: item.property.id,
-      title: item.property.title,
-      operation: item.property.operation,
-      type: item.property.type,
-      zone: item.property.zone || item.property.location,
-      city: item.property.city,
-      price: item.property.price || null,
-      bedrooms: item.property.bedrooms,
-      bathrooms: item.property.bathrooms,
-      active: item.property.active !== false,
-      compatibilityScore: item.score,
-      suggested:
-        item.property.active !== false &&
-        item.typeCompatible &&
-        item.budgetCompatible &&
-        item.score >= SUGGESTION_MIN_COMPATIBILITY_SCORE,
-      strictTypeOk: Boolean(item.typeCompatible),
-      strictBudgetOk: Boolean(item.budgetCompatible),
-      reasonsAdded: item.positiveReasons.join(" "),
-      reasonsMissing: item.missingReasons.join(" "),
-    }))
-  );
-  console.info(
-    `[MARK I.3] Umbral actual: ${SUGGESTION_MIN_COMPATIBILITY_SCORE}. No se imprimen datos de contacto ni respuestas personales.`
-  );
+  console.info("Propiedades evaluadas:", scoredProperties.length);
+  console.info("Propiedades compatibles:", compatibleIds.length);
+  console.info("IDs compatibles:", compatibleIds);
   console.groupEnd();
 }
 
@@ -3393,15 +3426,12 @@ function getSuggestedProperties(leadContext, properties) {
 
   const scoredProperties = properties.map((property, index) => {
     const breakdown = getPropertyCompatibilityBreakdown(state, property);
-    if (!isActiveProperty(property)) {
-      breakdown.missingReasons.push("Propiedad inactiva, vendida o rentada: no se sugiere.");
-    }
     return {
       property,
-      score: breakdown.score,
-      positiveReasons: breakdown.positiveReasons,
-      missingReasons: breakdown.missingReasons,
+      showProperty: breakdown.showProperty && isActiveProperty(property),
+      operationCompatible: breakdown.operationCompatible,
       typeCompatible: breakdown.typeCompatible,
+      locationCompatible: breakdown.locationCompatible,
       budgetCompatible: breakdown.budgetCompatible,
       index,
     };
@@ -3412,12 +3442,9 @@ function getSuggestedProperties(leadContext, properties) {
   return scoredProperties
     .filter(
       (item) =>
-        isActiveProperty(item.property) &&
-        item.typeCompatible &&
-        item.budgetCompatible &&
-        item.score >= SUGGESTION_MIN_COMPATIBILITY_SCORE
+        item.showProperty
     )
-    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .sort((a, b) => a.index - b.index)
     .slice(0, MAX_SUGGESTED_PROPERTIES)
     .map((item) => item.property);
 }
@@ -3648,26 +3675,21 @@ function createPropertyMedia(property) {
 
 function createPropertyActions(property) {
   const actions = createNode("div", "property-actions");
-
-  if (!property.url) {
-    return actions;
-  }
-
-  const link = createNode("a", "button button-ghost", "Ver propiedad");
-  link.href = property.url;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  link.addEventListener("click", trackInventoryClicked);
-  actions.appendChild(link);
+  const askButton = createNode("button", "button button-primary", "Quiero revisar esta opción");
+  askButton.type = "button";
+  askButton.addEventListener("click", () => {
+    trackInventoryClicked();
+    openPropertyWhatsapp(property);
+  });
+  actions.appendChild(askButton);
 
   return actions;
 }
 
 function openPropertyWhatsapp(property) {
-  const name = sanitizeText(getStateLabel(answers, "nombre"), 80) || "una persona interesada";
   const title = sanitizeText(getPropertyTitle(property), 140);
   openWhatsappWithMessage(
-    `Hola Ehecatl, soy ${name}. Me interesó una propiedad del inventario: ${title}. ¿Me ayudas a revisarla?`
+    `Hola Ehecatl.\nMe interesa revisar esta propiedad:\n\n${title}`
   );
 }
 
