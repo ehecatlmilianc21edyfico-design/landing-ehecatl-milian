@@ -2389,24 +2389,29 @@ async function submitLead(leadPayload) {
   const submittedAt = new Date().toISOString();
   setLeadCrmStatus(leadPayload, "submitted", submittedAt);
   const crmPayload = buildMakeLeadPayload(leadPayload);
+  const webhookUrl = getCrmEndpoint();
 
   try {
-    console.log("[PerfiladorEMC21] payload enviado a Make", crmPayload);
-    const response = await fetch(getCrmEndpoint(), {
+    console.log("Payload enviado a Make:", crmPayload);
+    console.log("Webhook URL:", webhookUrl);
+    const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(crmPayload),
       keepalive: true,
     });
+    console.log("Respuesta Make:", response.status, response.statusText);
 
     if (!response.ok) {
       setLeadCrmStatus(leadPayload, "failed");
+      console.error("Error al enviar lead a Make:", response.status, response.statusText);
       return { ok: false, mode: "failed" };
     }
 
     return { ok: true, mode: "submitted" };
   } catch (error) {
     setLeadCrmStatus(leadPayload, "failed");
+    console.error("Error al enviar lead a Make:", error);
     return { ok: false, mode: "failed" };
   }
 }
