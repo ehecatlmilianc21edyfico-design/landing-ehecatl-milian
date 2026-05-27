@@ -838,7 +838,7 @@ const CRM_CONFIG = {
 };
 const ANALYTICS_CONFIG = {
   enabled: true,
-  endpoint: "PENDIENTE_ENDPOINT_ANALYTICS_MAKE",
+  endpoint: "https://hook.us2.make.com/xymi395w1ukif2tvfh244387fyc1xf37",
   mode: "make",
 };
 const allRouteQuestionIds = [
