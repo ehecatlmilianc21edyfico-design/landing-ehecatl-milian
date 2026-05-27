@@ -243,10 +243,7 @@ const routeQuestions = {
         { id: "comprar_banos", type: "choice", label: "Baños", required: true, showIf: { id: "comprar_tipo", values: ["casa", "departamento"] }, options: [["1", "1"], ["2", "2"], ["3_mas", "3 o más"], ["flexible", "Flexible"]] },
         { id: "comprar_estacionamiento", type: "choice", label: "Estacionamiento", required: true, showIf: { id: "comprar_tipo", values: ["casa", "departamento"] }, options: [["0", "No necesito"], ["1", "1"], ["2_mas", "2 o más"], ["flexible", "Flexible"]] },
         { id: "comprar_tamano", type: "text", label: "Tamaño aproximado", placeholder: "Ej. 90 m2 o flexible", required: false, showIf: { id: "comprar_tipo", values: ["casa", "departamento"] } },
-        { id: "comprar_terreno_superficie", type: "text", label: "Superficie aproximada", placeholder: "Ej. 300 m2, 1 hectárea", required: true, showIf: { id: "comprar_tipo", values: ["terreno"] } },
-        { id: "comprar_terreno_situacion", type: "choice", label: "Situación legal o régimen", required: true, showIf: { id: "comprar_tipo", values: ["terreno"] }, options: TERRAIN_STATUS_OPTIONS },
         { id: "comprar_terreno_uso", type: "choice", label: "Uso pensado", required: true, showIf: { id: "comprar_tipo", values: ["terreno"] }, options: [["habitar", "Construir para habitar"], ["inversion", "Inversión"], ["comercial", "Uso comercial"], ["desarrollo", "Desarrollo"], ["no_se", "No estoy seguro"]] },
-        { id: "comprar_terreno_servicios", type: "multichoice", label: "Acceso y servicios", required: true, max: 3, statePath: "landDetails.topNeeds", showIf: { id: "comprar_tipo", values: ["terreno"] }, options: [["acceso", "Acceso claro"], ["agua", "Agua"], ["luz", "Luz"], ["drenaje", "Drenaje"], ["sin_servicios", "Sin servicios"], ["no_se", "No estoy seguro"]] },
       ],
     },
     {
@@ -691,7 +688,6 @@ const PRIMARY_TYPE_FIELDS = new Set([
   "valuacion_tipo",
 ]);
 const LAND_STATUS_FIELDS = new Set([
-  "comprar_terreno_situacion",
   "vender_terreno_situacion",
   "valuacion_terreno_situacion",
   "terreno_situacion",
@@ -793,7 +789,7 @@ const NEED_FIELD_IDS = [
   "invertir_factores",
   "orientacion_top_prioridades",
   "poner_renta_preocupaciones",
-  "comprar_terreno_servicios",
+  "comprar_terreno_uso",
   "vender_terreno_servicios",
   "valuacion_terreno_servicios",
   "terreno_servicios",
@@ -824,7 +820,6 @@ const SIZE_FIELD_IDS = [
   "comprar_tamano",
   "vender_tamano",
   "valuacion_tamano",
-  "comprar_terreno_superficie",
   "vender_terreno_superficie",
   "valuacion_terreno_superficie",
   "terreno_superficie",
@@ -1998,7 +1993,6 @@ function hasPriceInMind(state) {
 
 function hasHighRiskLand(state) {
   const legalSituation = getFirstStateValue(state, [
-    "comprar_terreno_situacion",
     "vender_terreno_situacion",
     "valuacion_terreno_situacion",
     "terreno_situacion",
@@ -2012,11 +2006,9 @@ function hasHighRiskLand(state) {
 function isLandIntake(state) {
   const propertyType = getFirstStateValue(state, PROPERTY_TYPE_FIELD_IDS);
   return propertyType === "terreno" || hasAnyStateAnswer(state, [
-    "comprar_terreno_superficie",
     "vender_terreno_superficie",
     "valuacion_terreno_superficie",
     "terreno_superficie",
-    "comprar_terreno_situacion",
     "vender_terreno_situacion",
     "valuacion_terreno_situacion",
     "terreno_situacion",
@@ -2195,7 +2187,6 @@ function buildRentMindset(state) {
 function buildLandDetails(state) {
   const requiresLandReview = isLandIntake(state) && hasHighRiskLand(state);
   const accessAndServices = getMultiAnswerLabels(state, [
-    "comprar_terreno_servicios",
     "vender_terreno_servicios",
     "valuacion_terreno_servicios",
     "terreno_servicios",
@@ -2203,7 +2194,6 @@ function buildLandDetails(state) {
 
   return {
     areaRange: getFirstStateLabel(state, [
-      "comprar_terreno_superficie",
       "vender_terreno_superficie",
       "valuacion_terreno_superficie",
       "terreno_superficie",
@@ -2215,7 +2205,6 @@ function buildLandDetails(state) {
       "terreno_uso",
     ]),
     legalSituation: getFirstStateLabel(state, [
-      "comprar_terreno_situacion",
       "vender_terreno_situacion",
       "valuacion_terreno_situacion",
       "terreno_situacion",
@@ -3056,7 +3045,25 @@ function getInventoryNeedTerms(state) {
     }
   });
 
-  return terms.map(normalizeInventoryText).filter(Boolean);
+  return expandInventoryNeedTerms(terms.map(normalizeInventoryText).filter(Boolean));
+}
+
+function expandInventoryNeedTerms(terms) {
+  const expandedTerms = [];
+  const aliases = {
+    habitar: ["habitacional", "residencial"],
+    inversion: ["inversion", "plusvalia"],
+    plusvalia: ["inversion", "plusvalia"],
+    comercial: ["comercial"],
+    desarrollo: ["desarrollo", "inversion"],
+  };
+
+  terms.forEach((term) => {
+    addUnique(expandedTerms, term);
+    (aliases[term] || []).forEach((alias) => addUnique(expandedTerms, alias));
+  });
+
+  return expandedTerms;
 }
 
 function getStateLocationTerms(state) {
