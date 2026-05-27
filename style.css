@@ -402,7 +402,26 @@ h1 {
 }
 
 .finish-card {
+  display: grid;
+  gap: 18px;
   padding: clamp(24px, 5vw, 42px);
+}
+
+.suggested-properties {
+  display: grid;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.suggested-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(1.2rem, 4.4vw, 2rem);
+  line-height: 1.08;
+}
+
+.suggested-properties .property-grid {
+  gap: 14px;
 }
 
 .question-kicker {

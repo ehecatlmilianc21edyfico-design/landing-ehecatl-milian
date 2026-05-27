@@ -12,6 +12,38 @@ const PRIVACY_CONSENT_TEXT = "He leído y acepto el Aviso de Privacidad.";
 const PROPERTY_DATA_URL = "data/properties.json";
 const FULL_INVENTORY_URL =
   "https://century21mexico.com/busqueda/oficina_632-century-21-edyfico_local";
+const MAX_SUGGESTED_PROPERTIES = 3;
+const SUGGESTION_DIAGNOSTICS_PARAM = "debugSuggestions";
+const PRICE_MATCH_TOLERANCE = 0.1;
+const GENERAL_LOCATION_GROUPS = [
+  {
+    id: "altozano",
+    terms: [
+      "altozano",
+      "campo de golf",
+      "club de golf",
+      "bosque monarca",
+      "canadas del bosque",
+      "cañadas del bosque",
+      "tres marias",
+      "tres marías",
+      "lomalta",
+      "faisanes",
+      "rincon",
+      "rincón",
+    ],
+  },
+  {
+    id: "san_pedro",
+    terms: [
+      "arko san pedro",
+      "residencial arko san pedro",
+      "san pedro",
+      "san pedro de los sauces",
+      "san pedro los sauces",
+    ],
+  },
+];
 
 if ("scrollRestoration" in window.history) {
   window.history.scrollRestoration = "manual";
@@ -221,10 +253,7 @@ const routeQuestions = {
         { id: "comprar_banos", type: "choice", label: "Baños", required: true, showIf: { id: "comprar_tipo", values: ["casa", "departamento"] }, options: [["1", "1"], ["2", "2"], ["3_mas", "3 o más"], ["flexible", "Flexible"]] },
         { id: "comprar_estacionamiento", type: "choice", label: "Estacionamiento", required: true, showIf: { id: "comprar_tipo", values: ["casa", "departamento"] }, options: [["0", "No necesito"], ["1", "1"], ["2_mas", "2 o más"], ["flexible", "Flexible"]] },
         { id: "comprar_tamano", type: "text", label: "Tamaño aproximado", placeholder: "Ej. 90 m2 o flexible", required: false, showIf: { id: "comprar_tipo", values: ["casa", "departamento"] } },
-        { id: "comprar_terreno_superficie", type: "text", label: "Superficie aproximada", placeholder: "Ej. 300 m2, 1 hectárea", required: true, showIf: { id: "comprar_tipo", values: ["terreno"] } },
-        { id: "comprar_terreno_situacion", type: "choice", label: "Situación legal o régimen", required: true, showIf: { id: "comprar_tipo", values: ["terreno"] }, options: TERRAIN_STATUS_OPTIONS },
         { id: "comprar_terreno_uso", type: "choice", label: "Uso pensado", required: true, showIf: { id: "comprar_tipo", values: ["terreno"] }, options: [["habitar", "Construir para habitar"], ["inversion", "Inversión"], ["comercial", "Uso comercial"], ["desarrollo", "Desarrollo"], ["no_se", "No estoy seguro"]] },
-        { id: "comprar_terreno_servicios", type: "multichoice", label: "Acceso y servicios", required: true, max: 3, statePath: "landDetails.topNeeds", showIf: { id: "comprar_tipo", values: ["terreno"] }, options: [["acceso", "Acceso claro"], ["agua", "Agua"], ["luz", "Luz"], ["drenaje", "Drenaje"], ["sin_servicios", "Sin servicios"], ["no_se", "No estoy seguro"]] },
       ],
     },
     {
@@ -347,7 +376,17 @@ const routeQuestions = {
       required: true,
       max: 3,
       statePath: "rentDetails.topNeeds",
+      showIf: { id: "rentar_tipo", values: ["casa", "departamento", "habitacion", "otro"] },
       options: [["mascotas", "Acepta mascotas"], ["estacionamiento", "Estacionamiento"], ["amueblado", "Amueblado"], ["seguridad", "Seguridad"], ["cerca_trabajo", "Cercanía a trabajo/escuela"], ["facturacion", "Facturación"], ["amenidades", "Amenidades"], ["precio", "Precio cómodo"]],
+    },
+    {
+      id: "rentar_giro_local",
+      type: "choice",
+      kicker: "Giro",
+      title: "¿Qué giro tendrá el local?",
+      required: true,
+      showIf: { id: "rentar_tipo", values: ["local_oficina"] },
+      options: [["oficina", "Oficina"], ["consultorio", "Consultorio"], ["comercio", "Comercio"], ["restaurante_cafeteria", "Restaurante / cafetería"], ["servicios", "Servicios"], ["otro", "Otro"]],
     },
   ],
   poner_renta: [
@@ -650,6 +689,8 @@ const finishScreen = document.querySelector("#finishScreen");
 const finishTitle = document.querySelector("#finish-title");
 const finishMessage = document.querySelector("#finishMessage");
 const sendWhatsappButton = document.querySelector("#sendWhatsappButton");
+const suggestedPropertiesSection = document.querySelector("#suggestedPropertiesSection");
+const suggestedPropertyGrid = document.querySelector("#suggestedPropertyGrid");
 const propertyGrid = document.querySelector("#propertyGrid");
 const inventoryEmpty = document.querySelector("#inventoryEmpty");
 const inventoryDisclaimer = document.querySelector("#inventoryDisclaimer");
@@ -669,7 +710,6 @@ const PRIMARY_TYPE_FIELDS = new Set([
   "valuacion_tipo",
 ]);
 const LAND_STATUS_FIELDS = new Set([
-  "comprar_terreno_situacion",
   "vender_terreno_situacion",
   "valuacion_terreno_situacion",
   "terreno_situacion",
@@ -768,10 +808,11 @@ const TIME_FIELD_IDS = [
 const NEED_FIELD_IDS = [
   "comprar_necesidades",
   "rentar_necesidades",
+  "rentar_giro_local",
   "invertir_factores",
   "orientacion_top_prioridades",
   "poner_renta_preocupaciones",
-  "comprar_terreno_servicios",
+  "comprar_terreno_uso",
   "vender_terreno_servicios",
   "valuacion_terreno_servicios",
   "terreno_servicios",
@@ -802,7 +843,6 @@ const SIZE_FIELD_IDS = [
   "comprar_tamano",
   "vender_tamano",
   "valuacion_tamano",
-  "comprar_terreno_superficie",
   "vender_terreno_superficie",
   "valuacion_terreno_superficie",
   "terreno_superficie",
@@ -1976,7 +2016,6 @@ function hasPriceInMind(state) {
 
 function hasHighRiskLand(state) {
   const legalSituation = getFirstStateValue(state, [
-    "comprar_terreno_situacion",
     "vender_terreno_situacion",
     "valuacion_terreno_situacion",
     "terreno_situacion",
@@ -1990,11 +2029,9 @@ function hasHighRiskLand(state) {
 function isLandIntake(state) {
   const propertyType = getFirstStateValue(state, PROPERTY_TYPE_FIELD_IDS);
   return propertyType === "terreno" || hasAnyStateAnswer(state, [
-    "comprar_terreno_superficie",
     "vender_terreno_superficie",
     "valuacion_terreno_superficie",
     "terreno_superficie",
-    "comprar_terreno_situacion",
     "vender_terreno_situacion",
     "valuacion_terreno_situacion",
     "terreno_situacion",
@@ -2173,7 +2210,6 @@ function buildRentMindset(state) {
 function buildLandDetails(state) {
   const requiresLandReview = isLandIntake(state) && hasHighRiskLand(state);
   const accessAndServices = getMultiAnswerLabels(state, [
-    "comprar_terreno_servicios",
     "vender_terreno_servicios",
     "valuacion_terreno_servicios",
     "terreno_servicios",
@@ -2181,7 +2217,6 @@ function buildLandDetails(state) {
 
   return {
     areaRange: getFirstStateLabel(state, [
-      "comprar_terreno_superficie",
       "vender_terreno_superficie",
       "valuacion_terreno_superficie",
       "terreno_superficie",
@@ -2193,7 +2228,6 @@ function buildLandDetails(state) {
       "terreno_uso",
     ]),
     legalSituation: getFirstStateLabel(state, [
-      "comprar_terreno_situacion",
       "vender_terreno_situacion",
       "valuacion_terreno_situacion",
       "terreno_situacion",
@@ -2902,9 +2936,12 @@ function normalizeInventoryText(value) {
 }
 
 function normalizeProperty(rawProperty) {
+  const tagFeatures = Array.isArray(rawProperty.tags)
+    ? rawProperty.tags.map((feature) => sanitizeText(feature, 80)).filter(Boolean)
+    : [];
   const topFeatures = Array.isArray(rawProperty.topFeatures)
     ? rawProperty.topFeatures.map((feature) => sanitizeText(feature, 80)).filter(Boolean)
-    : [];
+    : tagFeatures;
   const rawImages = Array.isArray(rawProperty.images) ? rawProperty.images : [];
   const facadeImage = sanitizeText(rawProperty.facadeImage || "", 300);
   const legacyImage = sanitizeText(rawProperty.image || "", 300);
@@ -2919,6 +2956,8 @@ function normalizeProperty(rawProperty) {
   const coverImage = facadeImage || submittedCoverImage || uniqueImages[0] || "";
   const needsImageReview =
     Boolean(rawProperty.needsImageReview) || Boolean(coverImage && !facadeImage);
+  const zone = sanitizeText(rawProperty.zone || rawProperty.location || "", 160);
+  const active = rawProperty.active !== false;
 
   return {
     id: sanitizeText(rawProperty.id || "", 120),
@@ -2927,7 +2966,8 @@ function normalizeProperty(rawProperty) {
     type: normalizeInventoryText(rawProperty.type || ""),
     price: Number.isFinite(Number(rawProperty.price)) ? Number(rawProperty.price) : 0,
     priceText: sanitizeText(rawProperty.priceText || "", 80),
-    location: sanitizeText(rawProperty.location || "", 160),
+    location: zone,
+    zone,
     city: sanitizeText(rawProperty.city || "", 100),
     bedrooms: rawProperty.bedrooms ?? null,
     bathrooms: rawProperty.bathrooms ?? null,
@@ -2942,13 +2982,15 @@ function normalizeProperty(rawProperty) {
     url: sanitizeText(rawProperty.url || "", 500),
     source: sanitizeText(rawProperty.source || "", 120),
     fetchedAt: sanitizeText(rawProperty.fetchedAt || "", 80),
-    status: normalizeInventoryText(rawProperty.status || "activa"),
+    active,
+    status: active ? normalizeInventoryText(rawProperty.status || "activa") : "inactiva",
     needsImageReview,
   };
 }
 
 function isActiveProperty(property) {
-  return !["vendida", "rentada", "inactiva"].includes(normalizeInventoryText(property.status));
+  return property.active !== false &&
+    !["vendida", "rentada", "inactiva"].includes(normalizeInventoryText(property.status));
 }
 
 function getPropertyImages(property) {
@@ -3026,26 +3068,83 @@ function getInventoryNeedTerms(state) {
     }
   });
 
-  return terms.map(normalizeInventoryText).filter(Boolean);
+  return expandInventoryNeedTerms(terms.map(normalizeInventoryText).filter(Boolean));
+}
+
+function expandInventoryNeedTerms(terms) {
+  const expandedTerms = [];
+  const aliases = {
+    habitar: ["habitacional", "residencial"],
+    inversion: ["inversion", "plusvalia"],
+    plusvalia: ["inversion", "plusvalia"],
+    comercial: ["comercial"],
+    desarrollo: ["desarrollo", "inversion"],
+  };
+
+  terms.forEach((term) => {
+    addUnique(expandedTerms, term);
+    (aliases[term] || []).forEach((alias) => addUnique(expandedTerms, alias));
+  });
+
+  return expandedTerms;
 }
 
 function getStateLocationTerms(state) {
-  return [
+  const rawTerms = [
     getStateLabel(state, "ciudad"),
     getFirstStateLabel(state, LOCATION_FIELD_IDS),
   ]
     .map(normalizeInventoryText)
     .filter((term) => term.length > 3);
+  const splitTerms = rawTerms.flatMap((term) =>
+    term
+      .split(/[^a-z0-9\u00f1]+/i)
+      .map(normalizeInventoryText)
+      .filter((item) => item.length > 3)
+  );
+
+  return [...new Set([...rawTerms, ...splitTerms])];
+}
+
+function getLocationGroupIds(text) {
+  const normalizedText = normalizeInventoryText(text);
+  if (!normalizedText) {
+    return [];
+  }
+
+  return GENERAL_LOCATION_GROUPS.filter((group) =>
+    group.terms.some((term) => normalizedText.includes(normalizeInventoryText(term)))
+  ).map((group) => group.id);
+}
+
+function haveCompatibleLocationGroup(userLocationTerms, propertyLocationText) {
+  const userGroupIds = new Set(
+    userLocationTerms.flatMap((term) => getLocationGroupIds(term))
+  );
+
+  if (!userGroupIds.size) {
+    return false;
+  }
+
+  const propertyGroupIds = getLocationGroupIds(propertyLocationText);
+  return propertyGroupIds.some((groupId) => userGroupIds.has(groupId));
 }
 
 function hasCompatibleLocation(state, property) {
-  const propertyLocation = normalizeInventoryText(`${property.city} ${property.location}`);
-  return getStateLocationTerms(state).some(
-    (term) => propertyLocation.includes(term) || term.includes(propertyLocation)
+  const propertyLocation = normalizeInventoryText(
+    `${property.city} ${property.location} ${property.title} ${(property.topFeatures || []).join(" ")}`
+  );
+  const locationTerms = getStateLocationTerms(state);
+
+  return (
+    locationTerms.some(
+      (term) => propertyLocation.includes(term) || term.includes(propertyLocation)
+    ) || haveCompatibleLocationGroup(locationTerms, propertyLocation)
   );
 }
 
 function hasCompatibleType(state, property) {
+  const objective = getStateValue(state, "objetivo");
   const wantedType = normalizeInventoryText(getFirstStateValue(state, PROPERTY_TYPE_FIELD_IDS));
   const propertyType = normalizeInventoryText(property.type);
 
@@ -3053,7 +3152,65 @@ function hasCompatibleType(state, property) {
     return false;
   }
 
-  return propertyType.includes(wantedType) || wantedType.includes(propertyType);
+  const compatibleTypes = {
+    casa: ["casa", "casa-en-condominio", "casa en condominio"],
+    departamento: ["departamento", "penthouse"],
+    terreno: ["terreno"],
+    local_oficina: ["local", "oficina", "oficinas", "edificio", "bodega", "inmueble-productivo"],
+    comercial: ["local", "oficina", "oficinas", "edificio", "bodega", "inmueble-productivo"],
+    residencial: ["casa", "casa-en-condominio", "departamento"],
+    preventas: ["casa", "casa-en-condominio", "departamento"],
+  };
+  const expectedTypes = compatibleTypes[wantedType] || [wantedType];
+
+  if (objective === "invertir" && wantedType === "quiero_comparar") {
+    return ["terreno", "departamento", "casa", "casa-en-condominio"].some((type) =>
+      propertyType.includes(type)
+    );
+  }
+
+  return expectedTypes.some(
+    (type) => propertyType.includes(type) || type.includes(propertyType)
+  );
+}
+
+function getSimpleRequestedPropertyTypes(state) {
+  const objective = getStateValue(state, "objetivo");
+  const selectedType = normalizeInventoryText(getFirstStateValue(state, PROPERTY_TYPE_FIELD_IDS));
+
+  if (!selectedType || selectedType === "aun_no_se") {
+    return [];
+  }
+
+  const typeMap = {
+    casa: ["casa", "casa-en-condominio", "casa en condominio"],
+    departamento: ["departamento", "penthouse"],
+    terreno: ["terreno"],
+    local_oficina: ["local", "oficina", "oficinas"],
+    bodega: ["bodega"],
+    comercial: ["local", "oficina", "oficinas", "bodega"],
+    residencial: ["casa", "casa-en-condominio", "casa en condominio", "departamento"],
+    preventas: ["casa", "casa-en-condominio", "casa en condominio", "departamento"],
+  };
+
+  if (objective === "invertir" && selectedType === "quiero_comparar") {
+    return ["casa", "casa-en-condominio", "casa en condominio", "departamento", "terreno"];
+  }
+
+  return typeMap[selectedType] || [selectedType];
+}
+
+function hasSimpleTypeMatch(state, property) {
+  const requestedTypes = getSimpleRequestedPropertyTypes(state);
+  const propertyType = normalizeInventoryText(property.type);
+
+  if (!requestedTypes.length || !propertyType) {
+    return false;
+  }
+
+  return requestedTypes.some(
+    (type) => propertyType === type || propertyType.includes(type) || type.includes(propertyType)
+  );
 }
 
 function hasCompatibleFeature(state, property) {
@@ -3067,94 +3224,235 @@ function hasCompatibleFeature(state, property) {
   return needTerms.some((term) => featureText.includes(term) || term.includes(featureText));
 }
 
-function getPropertyRecommendationScore(state, property) {
-  const objective = getStateValue(state, "objetivo");
-  const operationPreference = getPropertyOperationPreference(objective);
-  let score = 0;
+function getBudgetRangeForState(state) {
+  const budgetRanges = {
+    comprar_presupuesto: {
+      menos_1_5m: [0, 1500000],
+      "1_5m_3m": [1500000, 3000000],
+      "3m_5m": [3000000, 5000000],
+      "5m_8m": [5000000, 8000000],
+      mas_8m: [8000000, Infinity],
+    },
+    rentar_presupuesto: {
+      menos_4k: [0, 4000],
+      "4k_8k": [4000, 8000],
+      "8k_12k": [8000, 12000],
+      "12k_15k": [12000, 15000],
+      "15k_20k": [15000, 20000],
+      mas_20k: [20000, Infinity],
+    },
+    rentar_presupuesto_comercial: {
+      menos_5k: [0, 5000],
+      "5k_10k": [5000, 10000],
+      "10k_15k": [10000, 15000],
+      mas_15k: [15000, Infinity],
+    },
+    invertir_monto: {
+      menos_1m: [0, 1000000],
+      "1m_3m": [1000000, 3000000],
+      "3m_5m": [3000000, 5000000],
+      "5m_10m": [5000000, 10000000],
+      mas_10m: [10000000, Infinity],
+    },
+  };
 
-  if (operationPreference && property.operation === operationPreference) {
-    score += 20;
+  for (const [fieldId, ranges] of Object.entries(budgetRanges)) {
+    const selectedValue = getStateValue(state, fieldId);
+    if (selectedValue && ranges[selectedValue]) {
+      return ranges[selectedValue];
+    }
   }
 
-  if (
-    objective === "invertir" &&
-    property.operation === "venta" &&
-    ["terreno", "departamento", "local", "local_oficina"].includes(property.type)
-  ) {
-    score += 12;
-  }
-
-  if (
-    objective === "invertir" &&
-    property.topFeatures.some((feature) =>
-      /plusval[ií]a|renta|inversi[oó]n|rendimiento/i.test(feature)
-    )
-  ) {
-    score += 8;
-  }
-
-  if (hasCompatibleLocation(state, property)) {
-    score += 10;
-  }
-
-  if (hasCompatibleType(state, property)) {
-    score += 8;
-  }
-
-  if (hasCompatibleFeature(state, property)) {
-    score += 6;
-  }
-
-  if (property.facadeImage) {
-    score += 6;
-  } else if (hasPropertyImage(property)) {
-    score += 4;
-  }
-
-  return score;
+  return null;
 }
 
-function getRecommendedProperties(state, properties) {
-  const activeProperties = properties.filter(isActiveProperty);
+function getToleratedPriceRange(state) {
+  const range = getBudgetRangeForState(state);
+  if (!range) {
+    return null;
+  }
 
-  if (!activeProperties.length) {
+  const [min, max] = range;
+  const toleratedMin = min > 0 ? min * (1 - PRICE_MATCH_TOLERANCE) : 0;
+  const toleratedMax = Number.isFinite(max) ? max * (1 + PRICE_MATCH_TOLERANCE) : Infinity;
+  return [toleratedMin, toleratedMax];
+}
+
+function hasCompatibleBudget(state, property) {
+  const range = getToleratedPriceRange(state);
+  const price = Number(property.price);
+
+  if (!range || !Number.isFinite(price) || price <= 0) {
+    return false;
+  }
+
+  const [min, max] = range;
+  return price >= min && price <= max;
+}
+
+function getRequestedNumber(state, fieldIds) {
+  for (const fieldId of fieldIds) {
+    const value = getStateValue(state, fieldId);
+    if (!value || value === "flexible" || value === "no_se" || value === "no_aplica") {
+      continue;
+    }
+
+    if (value === "4_mas" || value === "3_mas" || value === "2_mas") {
+      return Number(value.charAt(0));
+    }
+
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+
+  return null;
+}
+
+function hasCompatibleDetails(state, property) {
+  const requestedBedrooms = getRequestedNumber(state, [
+    "comprar_recamaras",
+    "vender_recamaras",
+    "valuacion_recamaras",
+  ]);
+  const requestedBathrooms = getRequestedNumber(state, [
+    "comprar_banos",
+    "vender_banos",
+    "valuacion_banos",
+  ]);
+
+  if (
+    requestedBedrooms !== null &&
+    Number(property.bedrooms) >= requestedBedrooms
+  ) {
+    return true;
+  }
+
+  if (
+    requestedBathrooms !== null &&
+    Number(property.bathrooms) >= requestedBathrooms
+  ) {
+    return true;
+  }
+
+  return hasCompatibleFeature(state, property);
+}
+
+function isSuggestionDiagnosticsEnabled() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return (
+      params.get(SUGGESTION_DIAGNOSTICS_PARAM) === "1" ||
+      window.sessionStorage.getItem("markI.debugSuggestions") === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isSuggestionEligibleObjective(objective) {
+  return ["comprar", "rentar", "invertir"].includes(objective);
+}
+
+function getPropertyCompatibilityBreakdown(state, property) {
+  const objective = getStateValue(state, "objetivo");
+  const operationPreference = getPropertyOperationPreference(objective);
+  const operationCompatible = Boolean(
+    operationPreference && property.operation === operationPreference
+  );
+  const typeCompatible = hasSimpleTypeMatch(state, property);
+  const locationCompatible = hasCompatibleLocation(state, property);
+  const budgetCompatible = hasCompatibleBudget(state, property);
+  const showProperty =
+    isSuggestionEligibleObjective(objective) &&
+    operationCompatible &&
+    typeCompatible &&
+    locationCompatible &&
+    budgetCompatible;
+
+  if (!isSuggestionEligibleObjective(objective)) {
+    return {
+      showProperty: false,
+      operationCompatible,
+      typeCompatible,
+      locationCompatible,
+      budgetCompatible,
+    };
+  }
+
+  return {
+    showProperty,
+    operationCompatible,
+    typeCompatible,
+    locationCompatible,
+    budgetCompatible,
+  };
+}
+
+function getPropertyCompatibilityScore(state, property) {
+  return getPropertyCompatibilityBreakdown(state, property).showProperty ? 1 : 0;
+}
+
+function logSuggestionDiagnostics(state, scoredProperties) {
+  if (!isSuggestionDiagnosticsEnabled() || !Array.isArray(scoredProperties)) {
+    return;
+  }
+
+  const objective = getStateValue(state, "objetivo") || "sin_ruta";
+  const compatibleIds = scoredProperties
+    .filter((item) => item.showProperty)
+    .map((item) => item.property.id);
+
+  console.groupCollapsed(
+    `[MARK I.3] Diagnóstico simple de sugerencias - ruta: ${objective}`
+  );
+  console.info("Propiedades evaluadas:", scoredProperties.length);
+  console.info("Propiedades compatibles:", compatibleIds.length);
+  console.info("IDs compatibles:", compatibleIds);
+  console.groupEnd();
+}
+
+function getSuggestedProperties(leadContext, properties) {
+  const state = leadContext && leadContext.intent ? answers : leadContext;
+
+  if (!state) {
     return [];
   }
 
-  if (!state || !getStateValue(state, "objetivo")) {
-    return activeProperties
-      .map((property, index) => ({ property, index }))
-      .sort(
-        (a, b) =>
-          Number(hasPropertyImage(b.property)) - Number(hasPropertyImage(a.property)) ||
-          a.index - b.index
-      )
-      .slice(0, 3)
-      .map((item) => item.property);
+  const objective = getStateValue(state, "objetivo");
+
+  if (!isSuggestionEligibleObjective(objective)) {
+    return [];
   }
 
-  const scoredProperties = activeProperties
-    .map((property, index) => ({
+  const scoredProperties = properties.map((property, index) => {
+    const breakdown = getPropertyCompatibilityBreakdown(state, property);
+    return {
       property,
-      score: getPropertyRecommendationScore(state, property),
+      showProperty: breakdown.showProperty && isActiveProperty(property),
+      operationCompatible: breakdown.operationCompatible,
+      typeCompatible: breakdown.typeCompatible,
+      locationCompatible: breakdown.locationCompatible,
+      budgetCompatible: breakdown.budgetCompatible,
       index,
-    }))
-    .sort((a, b) => b.score - a.score || a.index - b.index);
-  const matches = scoredProperties.filter((item) => item.score > 0);
+    };
+  });
 
-  if (matches.length) {
-    return matches.slice(0, 6).map((item) => item.property);
-  }
+  logSuggestionDiagnostics(state, scoredProperties);
 
-  return activeProperties
-    .map((property, index) => ({ property, index }))
-    .sort(
-      (a, b) =>
-        Number(hasPropertyImage(b.property)) - Number(hasPropertyImage(a.property)) ||
-        a.index - b.index
+  return scoredProperties
+    .filter(
+      (item) =>
+        item.showProperty
     )
-    .slice(0, 3)
+    .sort((a, b) => a.index - b.index)
+    .slice(0, MAX_SUGGESTED_PROPERTIES)
     .map((item) => item.property);
+}
+
+function getRecommendedProperties(state, properties) {
+  return getSuggestedProperties(state, properties);
 }
 
 function getLeadPropertySummary(property) {
@@ -3172,15 +3470,32 @@ function getLeadPropertySummary(property) {
   };
 }
 
+function renderSuggestedProperties(properties = []) {
+  if (!suggestedPropertiesSection || !suggestedPropertyGrid) {
+    return;
+  }
+
+  const visibleProperties = properties.filter(isActiveProperty);
+  clearNode(suggestedPropertyGrid);
+  suggestedPropertiesSection.hidden = visibleProperties.length === 0;
+
+  if (!visibleProperties.length) {
+    return;
+  }
+
+  visibleProperties.forEach((property) => {
+    suggestedPropertyGrid.appendChild(createPropertyCard(property));
+  });
+}
+
 function updateInventoryRecommendations(state = null) {
   inventoryRecommendationState = state;
-  renderPropertyCards(getRecommendedProperties(state, loadedProperties));
+  const suggestedProperties = getSuggestedProperties(state || answers, loadedProperties);
+  renderSuggestedProperties(suggestedProperties);
+  renderPropertyCards([]);
 
   if (currentLeadPayload) {
-    currentLeadPayload.recommendedProperties = getRecommendedProperties(
-      state || answers,
-      loadedProperties
-    ).map(getLeadPropertySummary);
+    currentLeadPayload.recommendedProperties = suggestedProperties.map(getLeadPropertySummary);
   }
 }
 
@@ -3379,24 +3694,10 @@ function createPropertyMedia(property) {
 
 function createPropertyActions(property) {
   const actions = createNode("div", "property-actions");
-
-  if (property.url) {
-    const link = createNode("a", "button button-ghost", "Ver propiedad");
-    link.href = property.url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.addEventListener("click", trackInventoryClicked);
-    actions.appendChild(link);
-  } else {
-    const pending = createNode("button", "button button-disabled", "Ficha pendiente");
-    pending.type = "button";
-    pending.disabled = true;
-    actions.appendChild(pending);
-  }
-
-  const askButton = createNode("button", "button button-primary", "Preguntar por esta opción");
+  const askButton = createNode("button", "button button-primary", "Quiero revisar esta opción");
   askButton.type = "button";
   askButton.addEventListener("click", () => {
+    trackInventoryClicked();
     openPropertyWhatsapp(property);
   });
   actions.appendChild(askButton);
@@ -3405,10 +3706,9 @@ function createPropertyActions(property) {
 }
 
 function openPropertyWhatsapp(property) {
-  const name = sanitizeText(getStateLabel(answers, "nombre"), 80) || "una persona interesada";
   const title = sanitizeText(getPropertyTitle(property), 140);
   openWhatsappWithMessage(
-    `Hola Ehecatl, soy ${name}. Me interesó una propiedad del inventario: ${title}. ¿Me ayudas a revisarla?`
+    `Hola Ehecatl.\nMe interesa revisar esta propiedad:\n\n${title}`
   );
 }
 
@@ -4183,7 +4483,12 @@ async function showFinish() {
     return;
   }
 
-  updateInventoryRecommendations(answers);
+  const suggestedProperties = getSuggestedProperties(currentLeadPayload || answers, loadedProperties);
+  renderSuggestedProperties(suggestedProperties);
+  renderPropertyCards([]);
+  if (currentLeadPayload) {
+    currentLeadPayload.recommendedProperties = suggestedProperties.map(getLeadPropertySummary);
+  }
   isFinished = true;
   trackFormCompleted(getCurrentRoute());
   form.hidden = true;

@@ -10,7 +10,7 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://hook.us2.make.com; form-action 'self' https://wa.me https://api.whatsapp.com; base-uri 'self'; object-src 'none';"
+      content="default-src 'self'; img-src 'self' data: https://cdn.21online.lat https://century21mexico.com; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://hook.us2.make.com; form-action 'self' https://wa.me https://api.whatsapp.com; base-uri 'self'; object-src 'none';"
     />
     <title>Ehecatl Milian | Century 21 Edyfico</title>
     <link rel="preload" href="assets/hero-real-estate.png" as="image" />
@@ -121,6 +121,13 @@
               Gracias por compartir tu información. Revisaré tus respuestas y me pondré
               en contacto contigo para ayudarte según tu objetivo inmobiliario.
             </p>
+            <section id="suggestedPropertiesSection" class="suggested-properties" hidden aria-labelledby="suggested-properties-title">
+              <div class="section-heading suggested-heading">
+                <p class="eyebrow">Opciones sugeridas</p>
+                <h3 id="suggested-properties-title">Opciones que podrían interesarte</h3>
+              </div>
+              <div id="suggestedPropertyGrid" class="property-grid" aria-live="polite"></div>
+            </section>
             <button id="sendWhatsappButton" class="button button-primary" type="button">
               Enviar por WhatsApp
             </button>
@@ -133,8 +140,8 @@
           <p class="eyebrow">Inventario sugerido</p>
           <h2 id="inventory-title">Opciones que podrían interesarte</h2>
           <p>
-            Con base en lo que me compartiste, estas propiedades pueden servir como punto
-            de partida. Aun así, conviene revisarlas con calma para confirmar si realmente
+            Con base en lo que me compartiste, estas opciones pueden servir como punto
+            de partida. Conviene revisarlas con calma para confirmar si realmente
             se ajustan a tu objetivo, presupuesto y zona.
           </p>
         </div>
@@ -144,9 +151,8 @@
 
           <div id="inventoryEmpty" class="inventory-empty" hidden>
             <p>
-              Por ahora el inventario sugerido se está actualizando. Puedes consultar el
-              inventario completo de Century 21 Edyfico o escribirme para revisar opciones
-              disponibles.
+              Actualmente no encontré una propiedad que coincida con lo que buscas.
+              Puedo ayudarte a revisar más opciones disponibles.
             </p>
             <a
               class="button button-primary"
@@ -182,6 +188,6 @@
       </p>
     </noscript>
 
-    <script src="script.js?v=mark-i-telegram-message-1"></script>
+    <script src="script.js?v=mark-i-3-simple-suggestions-1"></script>
   </body>
 </html>
