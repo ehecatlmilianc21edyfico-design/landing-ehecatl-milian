@@ -622,7 +622,7 @@ const stateBuckets = {
   investmentDetails,
   landDetails,
 };
-const sessionId = generateLeadId().replace("lead_", "session_");
+const sessionId = getAnonymousSessionId();
 const firstPageUrl = window.location.href;
 let currentLeadPayload = null;
 let currentLeadSubmission = null;
@@ -635,6 +635,11 @@ let formStartedAt = 0;
 let lastStepViewed = "";
 let lastStepCompleted = "";
 let whatsappUnlockAt = 0;
+let formStartedTracked = false;
+let formCompletedTracked = false;
+let abandonmentTracked = false;
+let lastTrackedStepKey = "";
+const analyticsStepsViewed = new Set();
 
 const form = document.querySelector("#advisoryForm");
 const honeypotField = form.querySelector('input[name="website"]');
@@ -831,6 +836,11 @@ const CRM_CONFIG = {
   endpoint: "https://hook.us2.make.com/xdd8pkcr3bjekbyyf1q3omfmdwe2ykog",
   mode: "make",
 };
+const ANALYTICS_CONFIG = {
+  enabled: true,
+  endpoint: "PENDIENTE_ENDPOINT_ANALYTICS_MAKE",
+  mode: "make",
+};
 const allRouteQuestionIds = [
   ...new Set([
     ...Object.values(routeQuestions).flatMap((route) => route.flatMap(getQuestionIds)),
@@ -1018,6 +1028,7 @@ function isLikelyBot() {
 function markFormStarted() {
   if (!formStartedAt) {
     formStartedAt = Date.now();
+    trackFormStarted(getCurrentRoute());
   }
 }
 
@@ -1116,6 +1127,29 @@ function generateLeadId() {
   return `lead_${timestamp}_${random}`;
 }
 
+function generateEventId() {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 10);
+  return `evt_${timestamp}_${random}`;
+}
+
+function getAnonymousSessionId() {
+  const storageKey = "perfilador_emc21_session_id";
+
+  try {
+    const existing = window.sessionStorage?.getItem(storageKey);
+    if (existing) {
+      return sanitizeText(existing, 120);
+    }
+
+    const created = generateLeadId().replace("lead_", "session_");
+    window.sessionStorage?.setItem(storageKey, created);
+    return created;
+  } catch {
+    return generateLeadId().replace("lead_", "session_");
+  }
+}
+
 function getUtmParams() {
   const params = new URLSearchParams(window.location.search);
   return {
@@ -1125,6 +1159,256 @@ function getUtmParams() {
     utm_content: sanitizeText(params.get("utm_content") || "", 160),
     utm_term: sanitizeText(params.get("utm_term") || "", 160),
   };
+}
+
+function getAnalyticsEndpoint() {
+  const endpoint = sanitizeText(ANALYTICS_CONFIG.endpoint, 500);
+
+  if (!endpoint || !/^https:\/\//i.test(endpoint)) {
+    return "";
+  }
+
+  return endpoint;
+}
+
+function isAnalyticsReadyToSend() {
+  return Boolean(ANALYTICS_CONFIG.enabled && getAnalyticsEndpoint());
+}
+
+function getDeviceType() {
+  const width = window.innerWidth || document.documentElement.clientWidth || 0;
+
+  if (width < 768) {
+    return "mobile";
+  }
+
+  if (width < 1024) {
+    return "tablet";
+  }
+
+  return "desktop";
+}
+
+function getAnalyticsDeviceInfo() {
+  return {
+    deviceType: getDeviceType(),
+    userAgent: sanitizeText(window.navigator.userAgent || "", 240),
+    language: sanitizeText(window.navigator.language || "", 40),
+    platform: sanitizeText(window.navigator.platform || "", 80),
+  };
+}
+
+function sanitizeUrlForAnalytics(url) {
+  if (!url) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const allowedParams = new URLSearchParams();
+    const sourceParams = new URLSearchParams(parsed.search);
+
+    ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach((key) => {
+      const value = sourceParams.get(key);
+      if (value) {
+        allowedParams.set(key, value);
+      }
+    });
+
+    const query = allowedParams.toString();
+    return sanitizeText(
+      `${parsed.origin}${parsed.pathname}${query ? `?${query}` : ""}${parsed.hash || ""}`,
+      500
+    );
+  } catch {
+    return "";
+  }
+}
+
+function getCurrentRoute() {
+  return sanitizeText(getStateValue(answers, "objetivo") || "", 80);
+}
+
+function getAnalyticsStepTitle(question) {
+  if (!question) {
+    return "";
+  }
+
+  if (question.summaryTitle) {
+    return sanitizeText(question.summaryTitle, 160);
+  }
+
+  if (typeof question.title === "function") {
+    return sanitizeText(question.id, 160);
+  }
+
+  return sanitizeText(question.title || question.label || question.id, 160);
+}
+
+function getAnalyticsStepContext(stepId = "", stepTitle = "", route = "") {
+  const flow = getFlow();
+  const explicitIndex = stepId ? flow.findIndex((question) => question.id === stepId) : -1;
+  const stepIndex = explicitIndex >= 0 ? explicitIndex + 1 : currentIndex + 1;
+  const question = explicitIndex >= 0 ? flow[explicitIndex] : flow[currentIndex];
+
+  return {
+    route: sanitizeText(route || getCurrentRoute(), 80),
+    stepId: sanitizeText(stepId || question?.id || "", 120),
+    stepTitle: sanitizeText(stepTitle || getAnalyticsStepTitle(question), 160),
+    stepIndex,
+    totalSteps: flow.length,
+  };
+}
+
+function buildAnalyticsPayload(eventName, eventData = {}) {
+  const utm = getUtmParams();
+  const stepContext = getAnalyticsStepContext(
+    eventData.stepId,
+    eventData.stepTitle,
+    eventData.route
+  );
+  const deviceInfo = getAnalyticsDeviceInfo();
+
+  return {
+    ...eventData,
+    eventName: sanitizeText(eventName, 120),
+    eventId: generateEventId(),
+    sessionId,
+    timestamp: new Date().toISOString(),
+    pageUrl: sanitizeUrlForAnalytics(window.location.href),
+    referrer: sanitizeUrlForAnalytics(document.referrer || ""),
+    route: stepContext.route,
+    stepId: stepContext.stepId,
+    stepTitle: stepContext.stepTitle,
+    stepIndex: Number(stepContext.stepIndex || 0),
+    totalSteps: Number(stepContext.totalSteps || 0),
+    utm_source: utm.utm_source,
+    utm_medium: utm.utm_medium,
+    utm_campaign: utm.utm_campaign,
+    utm_content: utm.utm_content,
+    utm_term: utm.utm_term,
+    deviceInfo,
+    device_type: deviceInfo.deviceType,
+    viewportWidth: window.innerWidth || document.documentElement.clientWidth || 0,
+    viewportHeight: window.innerHeight || document.documentElement.clientHeight || 0,
+    mode: ANALYTICS_CONFIG.mode,
+    formElapsedSeconds: getElapsedFormSeconds(),
+    stepsViewedCount: analyticsStepsViewed.size,
+  };
+}
+
+function sendAnalyticsPayload(payload, { useBeacon = false } = {}) {
+  const endpoint = getAnalyticsEndpoint();
+
+  if (!isAnalyticsReadyToSend()) {
+    return;
+  }
+
+  try {
+    const body = JSON.stringify(payload);
+
+    if (useBeacon && navigator.sendBeacon) {
+      const blob = new Blob([body], { type: "application/json" });
+      navigator.sendBeacon(endpoint, blob);
+      return;
+    }
+
+    fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+    }).catch((error) => {
+      console.error("Error al enviar analytics:", error);
+    });
+  } catch (error) {
+    console.error("Error al preparar analytics:", error);
+  }
+}
+
+function trackEvent(eventName, eventData = {}) {
+  const payload = buildAnalyticsPayload(eventName, eventData);
+  const useBeacon = eventName === "form_abandoned";
+  sendAnalyticsPayload(payload, { useBeacon });
+}
+
+function trackStepViewed(stepId, stepTitle, route) {
+  const context = getAnalyticsStepContext(stepId, stepTitle, route);
+  const stepKey = `${context.route}:${context.stepIndex}:${context.stepId}`;
+
+  if (stepKey === lastTrackedStepKey) {
+    return;
+  }
+
+  lastTrackedStepKey = stepKey;
+  analyticsStepsViewed.add(stepKey);
+  trackEvent("step_viewed", context);
+}
+
+function trackStepCompleted(stepId, stepTitle, route) {
+  trackEvent("step_completed", getAnalyticsStepContext(stepId, stepTitle, route));
+}
+
+function trackFormStarted(route) {
+  if (formStartedTracked) {
+    return;
+  }
+
+  formStartedTracked = true;
+  trackEvent("form_started", { route: sanitizeText(route || getCurrentRoute(), 80) });
+}
+
+function trackFormCompleted(route) {
+  if (formCompletedTracked) {
+    return;
+  }
+
+  formCompletedTracked = true;
+  trackEvent("form_completed", {
+    route: sanitizeText(route || getCurrentRoute(), 80),
+    completed: true,
+  });
+}
+
+function trackFormAbandoned(route, lastStepId, lastStepTitle) {
+  if (
+    abandonmentTracked ||
+    formCompletedTracked ||
+    isFinished ||
+    !formStartedAt ||
+    !lastStepCompleted
+  ) {
+    return;
+  }
+
+  abandonmentTracked = true;
+  trackEvent("form_abandoned", {
+    route: sanitizeText(route || getCurrentRoute(), 80),
+    stepId: sanitizeText(lastStepId || lastStepViewed, 120),
+    stepTitle: sanitizeText(lastStepTitle || "", 160),
+    abandoned: true,
+    timeOnFormSeconds: getElapsedFormSeconds(),
+    stepsViewedCount: analyticsStepsViewed.size,
+  });
+}
+
+function trackInventoryClicked() {
+  trackEvent("inventory_clicked", { route: getCurrentRoute() });
+}
+
+function trackWhatsAppFinalClicked() {
+  trackEvent("whatsapp_final_clicked", { route: getCurrentRoute() });
+}
+
+function maybeTrackFormAbandoned() {
+  const flow = getFlow();
+  const question =
+    flow.find((item) => item.id === lastStepViewed) || flow[currentIndex];
+  trackFormAbandoned(
+    getCurrentRoute(),
+    lastStepViewed || question?.id || "",
+    getAnalyticsStepTitle(question)
+  );
 }
 
 function getStateAnswer(state, id) {
@@ -2395,6 +2679,11 @@ async function submitLead(leadPayload) {
 
   if (!validation.valid) {
     setLeadCrmStatus(leadPayload, "failed");
+    trackEvent("lead_submit_failed", {
+      route: getCurrentRoute(),
+      reason: validation.reason,
+      crmMode: CRM_CONFIG.mode,
+    });
     return { ok: false, mode: "failed", reason: validation.reason };
   }
 
@@ -2409,8 +2698,14 @@ async function submitLead(leadPayload) {
   const webhookUrl = getCrmEndpoint();
 
   try {
-    console.log("Payload enviado a Make:", crmPayload);
-    console.log("Webhook URL:", webhookUrl);
+    console.log("Lead CRM preparado:", {
+      route: crmPayload.intent?.ruta || "",
+      objective: crmPayload.intent?.objetivo || "",
+      acceptedPrivacy: crmPayload.consent?.acceptedPrivacy === true,
+      hasName: Boolean(crmPayload.contact?.nombre),
+      hasWhatsapp: Boolean(crmPayload.contact?.whatsapp),
+    });
+    console.log("Webhook CRM configurado:", Boolean(webhookUrl));
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2422,13 +2717,28 @@ async function submitLead(leadPayload) {
     if (!response.ok) {
       setLeadCrmStatus(leadPayload, "failed");
       console.error("Error al enviar lead a Make:", response.status, response.statusText);
+      trackEvent("lead_submit_failed", {
+        route: getCurrentRoute(),
+        crmMode: CRM_CONFIG.mode,
+        status: response.status,
+      });
       return { ok: false, mode: "failed" };
     }
 
+    trackEvent("lead_sent_to_crm", {
+      route: getCurrentRoute(),
+      crmMode: CRM_CONFIG.mode,
+      status: response.status,
+    });
     return { ok: true, mode: "submitted" };
   } catch (error) {
     setLeadCrmStatus(leadPayload, "failed");
     console.error("Error al enviar lead a Make:", error);
+    trackEvent("lead_submit_failed", {
+      route: getCurrentRoute(),
+      crmMode: CRM_CONFIG.mode,
+      reason: "network_error",
+    });
     return { ok: false, mode: "failed" };
   }
 }
@@ -2938,6 +3248,7 @@ function createPropertyActions(property) {
     link.href = property.url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
+    link.addEventListener("click", trackInventoryClicked);
     actions.appendChild(link);
   } else {
     const pending = createNode("button", "button button-disabled", "Ficha pendiente");
@@ -2983,7 +3294,9 @@ function renderQuestion({ shouldScroll = false, shouldFocus = false } = {}) {
   backButton.hidden = currentIndex === 0;
 
   const title = formatCopy(question.title);
+  const analyticsTitle = getAnalyticsStepTitle(question);
   const helpText = formatCopy(question.help);
+  trackStepViewed(question.id, analyticsTitle, getCurrentRoute());
   clearNode(questionMount);
 
   questionMount.appendChild(
@@ -3735,6 +4048,7 @@ async function showFinish() {
 
   updateInventoryRecommendations(answers);
   isFinished = true;
+  trackFormCompleted(getCurrentRoute());
   form.hidden = true;
   finishScreen.hidden = false;
   finishTitle.textContent = `Gracias, ${getFirstName()}. Ya tengo una idea más clara de lo que necesitas.`;
@@ -3802,6 +4116,7 @@ form.addEventListener("submit", async (event) => {
   }
 
   lastStepCompleted = question.id;
+  trackStepCompleted(question.id, getAnalyticsStepTitle(question), getCurrentRoute());
   currentIndex += 1;
 
   if (currentIndex >= getFlow().length) {
@@ -3837,6 +4152,7 @@ sendWhatsappButton.addEventListener("click", async () => {
   sendWhatsappButton.disabled = true;
   sendWhatsappButton.textContent = "Abriendo WhatsApp...";
   finishMessage.textContent = FINISH_DEFAULT_MESSAGE;
+  trackWhatsAppFinalClicked();
   openWhatsappWithMessage(currentLeadPayload.shortWhatsAppMessage || buildWhatsappMessage());
   window.setTimeout(() => {
     sendWhatsappButton.disabled = false;
@@ -3849,6 +4165,14 @@ document.querySelectorAll("[data-whatsapp-quick]").forEach((button) => {
     hasUserInteracted = true;
     openQuickWhatsapp();
   });
+});
+
+document.querySelector('.hero-actions a[href="#asesoria"]')?.addEventListener("click", () => {
+  trackEvent("hero_cta_clicked", { route: getCurrentRoute() });
+});
+
+document.querySelectorAll(`a[href="${FULL_INVENTORY_URL}"]`).forEach((link) => {
+  link.addEventListener("click", trackInventoryClicked);
 });
 
 document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
@@ -3865,6 +4189,14 @@ document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
   });
 });
 
+window.addEventListener("pagehide", maybeTrackFormAbandoned);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    maybeTrackFormAbandoned();
+  }
+});
+
+trackEvent("page_view");
 renderQuestion();
 loadProperties();
 handleInitialScrollPosition();
