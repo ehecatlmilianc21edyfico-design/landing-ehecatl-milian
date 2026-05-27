@@ -689,6 +689,8 @@ const finishScreen = document.querySelector("#finishScreen");
 const finishTitle = document.querySelector("#finish-title");
 const finishMessage = document.querySelector("#finishMessage");
 const sendWhatsappButton = document.querySelector("#sendWhatsappButton");
+const suggestedPropertiesSection = document.querySelector("#suggestedPropertiesSection");
+const suggestedPropertyGrid = document.querySelector("#suggestedPropertyGrid");
 const propertyGrid = document.querySelector("#propertyGrid");
 const inventoryEmpty = document.querySelector("#inventoryEmpty");
 const inventoryDisclaimer = document.querySelector("#inventoryDisclaimer");
@@ -3468,15 +3470,32 @@ function getLeadPropertySummary(property) {
   };
 }
 
+function renderSuggestedProperties(properties = []) {
+  if (!suggestedPropertiesSection || !suggestedPropertyGrid) {
+    return;
+  }
+
+  const visibleProperties = properties.filter(isActiveProperty);
+  clearNode(suggestedPropertyGrid);
+  suggestedPropertiesSection.hidden = visibleProperties.length === 0;
+
+  if (!visibleProperties.length) {
+    return;
+  }
+
+  visibleProperties.forEach((property) => {
+    suggestedPropertyGrid.appendChild(createPropertyCard(property));
+  });
+}
+
 function updateInventoryRecommendations(state = null) {
   inventoryRecommendationState = state;
-  renderPropertyCards(getRecommendedProperties(state, loadedProperties));
+  const suggestedProperties = getSuggestedProperties(state || answers, loadedProperties);
+  renderSuggestedProperties(suggestedProperties);
+  renderPropertyCards([]);
 
   if (currentLeadPayload) {
-    currentLeadPayload.recommendedProperties = getRecommendedProperties(
-      state || answers,
-      loadedProperties
-    ).map(getLeadPropertySummary);
+    currentLeadPayload.recommendedProperties = suggestedProperties.map(getLeadPropertySummary);
   }
 }
 
@@ -4464,7 +4483,12 @@ async function showFinish() {
     return;
   }
 
-  updateInventoryRecommendations(answers);
+  const suggestedProperties = getSuggestedProperties(currentLeadPayload || answers, loadedProperties);
+  renderSuggestedProperties(suggestedProperties);
+  renderPropertyCards([]);
+  if (currentLeadPayload) {
+    currentLeadPayload.recommendedProperties = suggestedProperties.map(getLeadPropertySummary);
+  }
   isFinished = true;
   trackFormCompleted(getCurrentRoute());
   form.hidden = true;
