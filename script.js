@@ -1263,20 +1263,34 @@ function buildAnalyticsPayload(eventName, eventData = {}) {
     eventData.route
   );
   const deviceInfo = getAnalyticsDeviceInfo();
+  const timestamp = new Date().toISOString();
+  const eventId = generateEventId();
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const elapsedSeconds = getElapsedFormSeconds();
+  const viewedCount = analyticsStepsViewed.size;
 
   return {
     ...eventData,
     eventName: sanitizeText(eventName, 120),
-    eventId: generateEventId(),
+    event_name: sanitizeText(eventName, 120),
+    eventId,
+    event_id: eventId,
     sessionId,
-    timestamp: new Date().toISOString(),
+    session_id: sessionId,
+    timestamp,
     pageUrl: sanitizeUrlForAnalytics(window.location.href),
+    page_url: sanitizeUrlForAnalytics(window.location.href),
     referrer: sanitizeUrlForAnalytics(document.referrer || ""),
     route: stepContext.route,
     stepId: stepContext.stepId,
+    step_id: stepContext.stepId,
     stepTitle: stepContext.stepTitle,
+    step_title: stepContext.stepTitle,
     stepIndex: Number(stepContext.stepIndex || 0),
+    step_index: Number(stepContext.stepIndex || 0),
     totalSteps: Number(stepContext.totalSteps || 0),
+    total_steps: Number(stepContext.totalSteps || 0),
     utm_source: utm.utm_source,
     utm_medium: utm.utm_medium,
     utm_campaign: utm.utm_campaign,
@@ -1284,11 +1298,15 @@ function buildAnalyticsPayload(eventName, eventData = {}) {
     utm_term: utm.utm_term,
     deviceInfo,
     device_type: deviceInfo.deviceType,
-    viewportWidth: window.innerWidth || document.documentElement.clientWidth || 0,
-    viewportHeight: window.innerHeight || document.documentElement.clientHeight || 0,
+    viewportWidth,
+    viewport_width: viewportWidth,
+    viewportHeight,
+    viewport_height: viewportHeight,
     mode: ANALYTICS_CONFIG.mode,
-    formElapsedSeconds: getElapsedFormSeconds(),
-    stepsViewedCount: analyticsStepsViewed.size,
+    formElapsedSeconds: elapsedSeconds,
+    form_elapsed_seconds: elapsedSeconds,
+    stepsViewedCount: viewedCount,
+    steps_viewed_count: viewedCount,
   };
 }
 
@@ -2475,6 +2493,57 @@ function listToCrmText(value) {
   return sanitizeText(value, OPEN_FIELD_MAX_LENGTH);
 }
 
+function valueOrNotSpecified(value, maxLength = 160) {
+  return sanitizeText(value, maxLength) || "No especificado";
+}
+
+function buildTelegramPayload(crmPayload) {
+  const nombre = valueOrNotSpecified(crmPayload.contact?.nombre, 80);
+  const whatsapp = valueOrNotSpecified(crmPayload.contact?.whatsapp, 40);
+  const objetivo = valueOrNotSpecified(crmPayload.intent?.objetivo, 80);
+  const urgencia = valueOrNotSpecified(crmPayload.qualification?.urgencia, 120);
+  const temperatura = valueOrNotSpecified(crmPayload.qualification?.temperatura, 120);
+  const calidadLead = valueOrNotSpecified(crmPayload.leadQuality?.calidadLead, 120);
+  const accionSugerida = valueOrNotSpecified(
+    crmPayload.internalNotes?.siguientePasoRecomendado ||
+      crmPayload.qualification?.accionRecomendada,
+    300
+  );
+  const message = [
+    "🔥 Nuevo lead inmobiliario",
+    "",
+    `👤 Nombre: ${nombre}`,
+    `📲 WhatsApp: ${whatsapp}`,
+    `🏡 Operación: ${objetivo}`,
+    `⏱️ Urgencia: ${urgencia}`,
+    `🌡️ Temperatura: ${temperatura}`,
+    `🧪 Calidad: ${calidadLead}`,
+    "",
+    "✅ Acción sugerida:",
+    accionSugerida,
+  ].join("\n");
+
+  return {
+    shouldSend: crmPayload.leadQuality?.shouldNotifyAdvisor === true,
+    should_send: crmPayload.leadQuality?.shouldNotifyAdvisor === true,
+    notificationType: "new_lead_full",
+    notification_type: "new_lead_full",
+    messageCount: 1,
+    message_count: 1,
+    message,
+    nombre,
+    whatsapp,
+    objetivo,
+    urgencia,
+    temperatura,
+    calidadLead,
+    calidad_lead: calidadLead,
+    accionSugerida,
+    accion_sugerida: accionSugerida,
+    siguiente_paso_recomendado: accionSugerida,
+  };
+}
+
 function buildMakeLeadPayload(leadPayload) {
   const contact = leadPayload?.contact || {};
   const intent = leadPayload?.intent || {};
@@ -2486,8 +2555,7 @@ function buildMakeLeadPayload(leadPayload) {
   const submittedAt = leadPayload?.submittedAt || new Date().toISOString();
   const acceptedPrivacy =
     leadPayload?.consent?.acceptedPrivacy === true || leadPayload?.privacy?.accepted === true;
-
-  return {
+  const crmPayload = {
     leadId: sanitizeText(leadPayload?.leadId || "", 120),
     submittedAt,
     consent: {
@@ -2539,6 +2607,13 @@ function buildMakeLeadPayload(leadPayload) {
     },
     privacyAccepted: acceptedPrivacy,
     utm: leadPayload?.utm || getUtmParams(),
+  };
+  const telegram = buildTelegramPayload(crmPayload);
+
+  return {
+    ...crmPayload,
+    telegram,
+    telegramMessage: telegram.message,
   };
 }
 
