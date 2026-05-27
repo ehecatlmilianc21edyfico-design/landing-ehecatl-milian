@@ -120,7 +120,7 @@ const PRICE_BASIS_OPTIONS = [
 
 const UNCLEAR_PRICE_BASIS = new Set(["inversion", "sugerencia", "deseado", "no_seguro"]);
 const NAME_TITLE_PATTERN =
-  /^(sr|sra|srta|dr|dra|lic|ing|arq|mtro|prof)\.?\s+|^(don|doña)\s+/i;
+  /^(sr|sra|srta|dr|dra|lic|ing|arq|mtro|mtra|prof)\.?\s+|^(don|doña)\s+/i;
 const LEAD_QUALITY = {
   USEFUL: "useful",
   CURIOUS: "curious",
@@ -308,7 +308,7 @@ const routeQuestions = {
       title: "Para cuidar la estrategia, falta este contexto.",
       fields: [
         { id: "etapa", type: "choice", label: "¿En qué punto estás ahorita?", required: true, options: STAGE_OPTIONS },
-        { id: "vender_documentos", type: "choice", label: "Documentación declarada", required: true, options: [["en_regla", "Escrituras y pagos en regla"], ["credito_vigente", "Tiene crédito vigente"], ["requiere_revision", "Necesita revisión"], ["sucesion", "Hay sucesión o tema legal"], ["no_se", "No estoy seguro"]] },
+        { id: "vender_documentos", type: "choice", label: "Documentación declarada", required: true, options: [["en_regla", "Escrituras y pagos en regla"], ["parcial", "Tengo algunos documentos"], ["requiere_revision", "Necesita revisión"], ["sucesion", "Hay sucesión o tema legal"], ["no_se", "No estoy seguro"]] },
         { id: "vender_tiempo", type: "choice", label: "Urgencia", required: true, options: [["urgente", "Lo antes posible"], ["1_3_meses", "En 1 a 3 meses"], ["3_6_meses", "En 3 a 6 meses"], ["sin_prisa", "Sin prisa, pero quiero prepararme"]] },
         { id: "vender_motivo", type: "choice", label: "Motivo principal", required: true, options: [["cambio_casa", "Cambio de casa"], ["liquidez", "Necesito liquidez"], ["inversion", "Mover inversión"], ["herencia", "Herencia o tema familiar"], ["otro", "Otro"]] },
       ],
@@ -598,12 +598,13 @@ const contactQuestions = [
     title: ({ name }) => `Listo, ${name}. ¿Dónde puedo darte seguimiento?`,
     help: "Con esto puedo contactarte sin que tengas que repetir todo lo que ya me compartiste.",
     fields: [
-      { id: "prioridad", type: "choice", label: "¿Qué te gustaría cuidar más en esta decisión?", required: true, options: HOME_NEEDS_OPTIONS },
+      { id: "nombre", type: "text", inputType: "text", label: "Nombre", required: true, placeholder: "Escribe tu nombre", autocomplete: "name" },
       { id: "medio_contacto", type: "choice", label: "Medio preferido", required: true, options: [["whatsapp", "WhatsApp"], ["llamada", "Llamada"], ["correo", "Correo electrónico"], ["cualquiera", "El que sea más práctico"]] },
       { id: "horario_contacto", type: "choice", label: "Horario preferido", required: true, options: [["manana", "Mañana"], ["mediodia", "Mediodía"], ["tarde", "Tarde"], ["noche", "Noche"], ["flexible", "Horario flexible"]] },
-      { id: "whatsapp", type: "text", inputType: "tel", label: "WhatsApp", required: true, placeholder: "Ej. 55 1234 5678", autocomplete: "tel" },
+      { id: "whatsapp", type: "text", inputType: "tel", label: "Teléfono / WhatsApp", required: true, placeholder: "Ej. 55 1234 5678", autocomplete: "tel" },
       { id: "ciudad", type: "text", inputType: "text", label: "Ciudad", required: true, placeholder: "Ciudad y estado", autocomplete: "address-level2" },
       { id: "correo", type: "text", inputType: "email", label: "Correo electrónico opcional", required: false, placeholder: "tu@correo.com", autocomplete: "email" },
+      { id: "comentario_contacto", type: "textarea", label: "Comentario adicional opcional", required: false, placeholder: "Si quieres agregar algo importante para el seguimiento, puedes escribirlo aquí." },
       { id: "consentimiento", type: "checkbox", label: "Consentimiento", required: true },
     ],
   },
@@ -770,7 +771,6 @@ const TIME_FIELD_IDS = [
   "terreno_tiempo",
 ];
 const NEED_FIELD_IDS = [
-  "prioridad",
   "comprar_necesidades",
   "rentar_necesidades",
   "invertir_factores",
@@ -983,7 +983,7 @@ function getNameValidationError(value) {
   const name = String(value || "").trim();
 
   if (NAME_TITLE_PATTERN.test(name)) {
-    return "Escribe tu nombre real, sin títulos como Sr., Dra., Lic., Don o Doña.";
+    return "Escribe tu nombre real, sin títulos como Sr., Dra., Mtra., Lic., Don o Doña.";
   }
 
   if (!/^[A-Za-zÁÉÍÓÚáéíóúÑñÜü\s]{2,80}$/.test(name)) {
@@ -2419,12 +2419,15 @@ function buildPropertyContext(state) {
   };
 }
 
-function buildInternalNotesPayload(internalReview, qualification, financingReadiness) {
+function buildInternalNotesPayload(internalReview, qualification, financingReadiness, state = {}) {
+  const contactComment = sanitizeText(getStateValue(state, "comentario_contacto"), 500);
+
   return {
     notasComerciales: [
       ...(internalReview.commercialFlags || []),
       ...(internalReview.advisorNotes || []),
       ...(financingReadiness.advisorNote ? [financingReadiness.advisorNote] : []),
+      ...(contactComment ? [`Comentario adicional: ${contactComment}`] : []),
     ],
     notasLegales: internalReview.legalFlags || [],
     puntosARevisar: internalReview.recommendedChecks || [],
@@ -2616,13 +2619,14 @@ function buildLeadPayload(state) {
       correo: getStateValue(state, "correo"),
       medioPreferido: getStateLabel(state, "medio_contacto"),
       horarioPreferido: getStateLabel(state, "horario_contacto"),
+      comentarioAdicional: getStateValue(state, "comentario_contacto"),
     },
     intent: buildIntentPayload(state, route),
     qualification: buildQualificationPayload(qualification),
     leadQuality: buildLeadQualityPayload(leadQuality, internalReview),
     financingReadiness,
     propertyContext: buildPropertyContext(state),
-    internalNotes: buildInternalNotesPayload(internalReview, qualification, financingReadiness),
+    internalNotes: buildInternalNotesPayload(internalReview, qualification, financingReadiness, state),
     utm: getUtmParams(),
     metrics: {
       sessionId,
