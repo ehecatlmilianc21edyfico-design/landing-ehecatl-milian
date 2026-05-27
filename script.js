@@ -14,6 +14,7 @@ const FULL_INVENTORY_URL =
   "https://century21mexico.com/busqueda/oficina_632-century-21-edyfico_local";
 const SUGGESTION_MIN_COMPATIBILITY_SCORE = 80;
 const MAX_SUGGESTED_PROPERTIES = 3;
+const SUGGESTION_DIAGNOSTICS_PARAM = "debugSuggestions";
 
 if ("scrollRestoration" in window.history) {
   window.history.scrollRestoration = "manual";
@@ -3208,40 +3209,109 @@ function hasCompatibleDetails(state, property) {
   return hasCompatibleFeature(state, property);
 }
 
+function isSuggestionDiagnosticsEnabled() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return (
+      params.get(SUGGESTION_DIAGNOSTICS_PARAM) === "1" ||
+      window.sessionStorage.getItem("markI.debugSuggestions") === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isSuggestionEligibleObjective(objective) {
   return ["comprar", "rentar", "invertir"].includes(objective);
 }
 
-function getPropertyCompatibilityScore(state, property) {
+function getPropertyCompatibilityBreakdown(state, property) {
   const objective = getStateValue(state, "objetivo");
   const operationPreference = getPropertyOperationPreference(objective);
   let score = 0;
+  const positiveReasons = [];
+  const missingReasons = [];
 
   if (!isSuggestionEligibleObjective(objective)) {
-    return 0;
+    missingReasons.push("La ruta actual no aplica para sugerencias.");
+    return { score, positiveReasons, missingReasons };
   }
 
   if (operationPreference && property.operation === operationPreference) {
     score += 30;
+    positiveReasons.push("Operación compatible: +30.");
+  } else {
+    missingReasons.push("Operación no compatible o no definida: +0.");
   }
 
   if (hasCompatibleType(state, property)) {
     score += 20;
+    positiveReasons.push("Tipo de propiedad compatible: +20.");
+  } else {
+    missingReasons.push("Tipo de propiedad no compatible o no definido: +0.");
   }
 
   if (hasCompatibleLocation(state, property)) {
     score += 20;
+    positiveReasons.push("Zona/ciudad compatible: +20.");
+  } else {
+    missingReasons.push("Zona/ciudad no compatible o no definida: +0.");
   }
 
   if (hasCompatibleBudget(state, property)) {
     score += 20;
+    positiveReasons.push("Presupuesto compatible: +20.");
+  } else {
+    missingReasons.push("Presupuesto fuera de rango, no definido o sin precio comparable: +0.");
   }
 
   if (hasCompatibleDetails(state, property)) {
     score += 10;
+    positiveReasons.push("Recámaras, baños o tags compatibles: +10.");
+  } else {
+    missingReasons.push("Recámaras, baños o tags sin coincidencia suficiente: +0.");
   }
 
-  return score;
+  return { score, positiveReasons, missingReasons };
+}
+
+function getPropertyCompatibilityScore(state, property) {
+  return getPropertyCompatibilityBreakdown(state, property).score;
+}
+
+function logSuggestionDiagnostics(state, scoredProperties) {
+  if (!isSuggestionDiagnosticsEnabled() || !Array.isArray(scoredProperties)) {
+    return;
+  }
+
+  const objective = getStateValue(state, "objetivo") || "sin_ruta";
+  console.groupCollapsed(
+    `[MARK I.3] Diagnóstico de sugerencias inmobiliarias - ruta: ${objective}`
+  );
+  console.table(
+    scoredProperties.map((item) => ({
+      id: item.property.id,
+      title: item.property.title,
+      operation: item.property.operation,
+      type: item.property.type,
+      zone: item.property.zone || item.property.location,
+      city: item.property.city,
+      price: item.property.price || null,
+      bedrooms: item.property.bedrooms,
+      bathrooms: item.property.bathrooms,
+      active: item.property.active !== false,
+      compatibilityScore: item.score,
+      suggested:
+        item.property.active !== false &&
+        item.score >= SUGGESTION_MIN_COMPATIBILITY_SCORE,
+      reasonsAdded: item.positiveReasons.join(" "),
+      reasonsMissing: item.missingReasons.join(" "),
+    }))
+  );
+  console.info(
+    `[MARK I.3] Umbral actual: ${SUGGESTION_MIN_COMPATIBILITY_SCORE}. No se imprimen datos de contacto ni respuestas personales.`
+  );
+  console.groupEnd();
 }
 
 function getSuggestedProperties(leadContext, properties) {
@@ -3257,14 +3327,28 @@ function getSuggestedProperties(leadContext, properties) {
     return [];
   }
 
-  return properties
-    .filter(isActiveProperty)
-    .map((property, index) => ({
+  const scoredProperties = properties.map((property, index) => {
+    const breakdown = getPropertyCompatibilityBreakdown(state, property);
+    if (!isActiveProperty(property)) {
+      breakdown.missingReasons.push("Propiedad inactiva, vendida o rentada: no se sugiere.");
+    }
+    return {
       property,
-      score: getPropertyCompatibilityScore(state, property),
+      score: breakdown.score,
+      positiveReasons: breakdown.positiveReasons,
+      missingReasons: breakdown.missingReasons,
       index,
-    }))
-    .filter((item) => item.score >= SUGGESTION_MIN_COMPATIBILITY_SCORE)
+    };
+  });
+
+  logSuggestionDiagnostics(state, scoredProperties);
+
+  return scoredProperties
+    .filter(
+      (item) =>
+        isActiveProperty(item.property) &&
+        item.score >= SUGGESTION_MIN_COMPATIBILITY_SCORE
+    )
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .slice(0, MAX_SUGGESTED_PROPERTIES)
     .map((item) => item.property);
