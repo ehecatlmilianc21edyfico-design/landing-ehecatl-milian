@@ -598,13 +598,8 @@ const contactQuestions = [
     title: ({ name }) => `Listo, ${name}. ¿Dónde puedo darte seguimiento?`,
     help: "Con esto puedo contactarte sin que tengas que repetir todo lo que ya me compartiste.",
     fields: [
-      { id: "nombre", type: "text", inputType: "text", label: "Nombre", required: true, placeholder: "Escribe tu nombre", autocomplete: "name" },
-      { id: "medio_contacto", type: "choice", label: "Medio preferido", required: true, options: [["whatsapp", "WhatsApp"], ["llamada", "Llamada"], ["correo", "Correo electrónico"], ["cualquiera", "El que sea más práctico"]] },
-      { id: "horario_contacto", type: "choice", label: "Horario preferido", required: true, options: [["manana", "Mañana"], ["mediodia", "Mediodía"], ["tarde", "Tarde"], ["noche", "Noche"], ["flexible", "Horario flexible"]] },
-      { id: "whatsapp", type: "text", inputType: "tel", label: "Teléfono / WhatsApp", required: true, placeholder: "Ej. 55 1234 5678", autocomplete: "tel" },
-      { id: "ciudad", type: "text", inputType: "text", label: "Ciudad", required: true, placeholder: "Ciudad y estado", autocomplete: "address-level2" },
+      { id: "whatsapp", type: "text", inputType: "tel", label: "WhatsApp", required: true, placeholder: "Ej. 55 1234 5678", autocomplete: "tel" },
       { id: "correo", type: "text", inputType: "email", label: "Correo electrónico opcional", required: false, placeholder: "tu@correo.com", autocomplete: "email" },
-      { id: "comentario_contacto", type: "textarea", label: "Comentario adicional opcional", required: false, placeholder: "Si quieres agregar algo importante para el seguimiento, puedes escribirlo aquí." },
       { id: "consentimiento", type: "checkbox", label: "Consentimiento", required: true },
     ],
   },
@@ -2419,15 +2414,12 @@ function buildPropertyContext(state) {
   };
 }
 
-function buildInternalNotesPayload(internalReview, qualification, financingReadiness, state = {}) {
-  const contactComment = sanitizeText(getStateValue(state, "comentario_contacto"), 500);
-
+function buildInternalNotesPayload(internalReview, qualification, financingReadiness) {
   return {
     notasComerciales: [
       ...(internalReview.commercialFlags || []),
       ...(internalReview.advisorNotes || []),
       ...(financingReadiness.advisorNote ? [financingReadiness.advisorNote] : []),
-      ...(contactComment ? [`Comentario adicional: ${contactComment}`] : []),
     ],
     notasLegales: internalReview.legalFlags || [],
     puntosARevisar: internalReview.recommendedChecks || [],
@@ -2577,14 +2569,6 @@ function validateLeadPayloadForCrm(leadPayload) {
     return { valid: false, reason: "missing_route" };
   }
 
-  if (!sanitizeText(contact.medioPreferido, 120)) {
-    return { valid: false, reason: "missing_contact_preference" };
-  }
-
-  if (!sanitizeText(contact.horarioPreferido, 120)) {
-    return { valid: false, reason: "missing_contact_time" };
-  }
-
   if (crmPayload.leadQuality?.shouldSendToCRM !== true) {
     return { valid: false, reason: "lead_quality_filtered" };
   }
@@ -2619,14 +2603,13 @@ function buildLeadPayload(state) {
       correo: getStateValue(state, "correo"),
       medioPreferido: getStateLabel(state, "medio_contacto"),
       horarioPreferido: getStateLabel(state, "horario_contacto"),
-      comentarioAdicional: getStateValue(state, "comentario_contacto"),
     },
     intent: buildIntentPayload(state, route),
     qualification: buildQualificationPayload(qualification),
     leadQuality: buildLeadQualityPayload(leadQuality, internalReview),
     financingReadiness,
     propertyContext: buildPropertyContext(state),
-    internalNotes: buildInternalNotesPayload(internalReview, qualification, financingReadiness, state),
+    internalNotes: buildInternalNotesPayload(internalReview, qualification, financingReadiness),
     utm: getUtmParams(),
     metrics: {
       sessionId,
