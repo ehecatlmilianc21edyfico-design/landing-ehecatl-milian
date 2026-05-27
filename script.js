@@ -586,7 +586,7 @@ const contactQuestions = [
       { id: "prioridad", type: "choice", label: "¿Qué te gustaría cuidar más en esta decisión?", required: true, options: HOME_NEEDS_OPTIONS },
       { id: "medio_contacto", type: "choice", label: "Medio preferido", required: true, options: [["whatsapp", "WhatsApp"], ["llamada", "Llamada"], ["correo", "Correo electrónico"], ["cualquiera", "El que sea más práctico"]] },
       { id: "horario_contacto", type: "choice", label: "Horario preferido", required: true, options: [["manana", "Mañana"], ["mediodia", "Mediodía"], ["tarde", "Tarde"], ["noche", "Noche"], ["flexible", "Horario flexible"]] },
-      { id: "whatsapp", type: "text", inputType: "tel", label: "WhatsApp", required: false, placeholder: "Ej. 55 1234 5678", autocomplete: "tel" },
+      { id: "whatsapp", type: "text", inputType: "tel", label: "WhatsApp", required: true, placeholder: "Ej. 55 1234 5678", autocomplete: "tel" },
       { id: "ciudad", type: "text", inputType: "text", label: "Ciudad", required: true, placeholder: "Ciudad y estado", autocomplete: "address-level2" },
       { id: "correo", type: "text", inputType: "email", label: "Correo electrónico opcional", required: false, placeholder: "tu@correo.com", autocomplete: "email" },
       { id: "consentimiento", type: "checkbox", label: "Consentimiento", required: true },
@@ -2188,10 +2188,15 @@ function buildMakeLeadPayload(leadPayload) {
   const leadQuality = leadPayload?.leadQuality || {};
   const internalNotes = leadPayload?.internalNotes || {};
   const submittedAt = leadPayload?.submittedAt || new Date().toISOString();
+  const acceptedPrivacy =
+    leadPayload?.consent?.acceptedPrivacy === true || leadPayload?.privacy?.accepted === true;
 
   return {
     leadId: sanitizeText(leadPayload?.leadId || "", 120),
     submittedAt,
+    consent: {
+      acceptedPrivacy,
+    },
     contact: {
       nombre: sanitizeText(contact.nombre, 80),
       whatsapp: getPhoneDigits(contact.whatsapp),
@@ -2208,6 +2213,7 @@ function buildMakeLeadPayload(leadPayload) {
       score: Number(qualification.score || 0),
       temperatura: sanitizeText(qualification.temperatura, 120),
       urgencia: sanitizeText(qualification.urgencia, 120),
+      calidadLead: sanitizeText(leadQuality.calidadLead, 120),
       accionRecomendada: sanitizeText(qualification.accionRecomendada, 300),
     },
     propertyContext: {
@@ -2235,8 +2241,7 @@ function buildMakeLeadPayload(leadPayload) {
       puntosARevisar: listToCrmText(internalNotes.puntosARevisar),
       siguientePasoRecomendado: sanitizeText(internalNotes.siguientePasoRecomendado, 300),
     },
-    privacyAccepted:
-      leadPayload?.privacy?.accepted === true || leadPayload?.consent?.acceptedPrivacy === true,
+    privacyAccepted: acceptedPrivacy,
     utm: leadPayload?.utm || getUtmParams(),
   };
 }
@@ -2247,9 +2252,8 @@ function validateLeadPayloadForCrm(leadPayload) {
   const objective = crmPayload.intent?.objetivo;
   const route = crmPayload.intent?.ruta;
   const hasValidWhatsapp = getPhoneDigits(contact.whatsapp).length >= 10;
-  const hasValidContactEmail = isValidEmail(contact.correo);
 
-  if (crmPayload.privacyAccepted !== true) {
+  if (crmPayload.consent?.acceptedPrivacy !== true) {
     return { valid: false, reason: "missing_consent" };
   }
 
@@ -2257,8 +2261,8 @@ function validateLeadPayloadForCrm(leadPayload) {
     return { valid: false, reason: "missing_name" };
   }
 
-  if (!hasValidWhatsapp && !hasValidContactEmail) {
-    return { valid: false, reason: "missing_contact_channel" };
+  if (!hasValidWhatsapp) {
+    return { valid: false, reason: "invalid_whatsapp" };
   }
 
   if (!sanitizeText(objective, 80)) {
@@ -3456,7 +3460,7 @@ function validateAndStore(question) {
     }
 
     if (question.id === "contacto_final" && !hasValidContactChannel()) {
-      showError("Déjame al menos un WhatsApp válido o un correo electrónico válido para poder darte seguimiento.");
+      showError("Escribe un WhatsApp válido para poder darte seguimiento.");
       return false;
     }
 
@@ -3468,9 +3472,8 @@ function validateAndStore(question) {
 
 function hasValidContactChannel() {
   const whatsapp = getStateValue(answers, "whatsapp");
-  const correo = getStateValue(answers, "correo");
 
-  return getPhoneDigits(whatsapp).length >= 10 || isValidEmail(correo);
+  return getPhoneDigits(whatsapp).length >= 10;
 }
 
 function validateFieldAndStore(question) {
