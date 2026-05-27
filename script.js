@@ -8,8 +8,7 @@ const SECURITY_NOTE =
   "Por seguridad, no compartas documentos, contraseñas ni datos bancarios en este formulario. Si hace falta revisar algo específico, lo vemos después por un medio adecuado.";
 const FINISH_DEFAULT_MESSAGE =
   "Revisaré tus respuestas y me pondré en contacto contigo para orientarte según tu objetivo inmobiliario.";
-const PRIVACY_CONSENT_TEXT =
-  "Acepto que Erick Ehecatl Carro Milian, asesor inmobiliario vinculado con Century 21 Edyfico, me contacte por los medios proporcionados para dar seguimiento a mi solicitud inmobiliaria. He leído y acepto el Aviso de Privacidad.";
+const PRIVACY_CONSENT_TEXT = "He leído y acepto el Aviso de Privacidad.";
 const PROPERTY_DATA_URL = "data/properties.json";
 const FULL_INVENTORY_URL =
   "https://century21mexico.com/busqueda/oficina_632-century-21-edyfico_local";
@@ -48,6 +47,36 @@ const HOME_NEEDS_OPTIONS = [
   ["no_errores", "No cometer errores"],
 ];
 
+const CREDIT_STATUS_OPTIONS = [
+  ["credito_bancario_preaprobado", "Crédito bancario preaprobado"],
+  ["precalificacion_infonavit", "Precalificación Infonavit"],
+  ["precalificacion_fovissste", "Precalificación Fovissste"],
+  ["simulacion_hecha", "Simulación hecha"],
+  ["tramite_iniciado", "Trámite iniciado"],
+  ["necesito_orientacion", "Necesito orientación"],
+  ["no_se_si_califico", "No sé si califico"],
+  ["recursos_propios", "Recursos propios"],
+];
+
+const FINANCING_SCORE = {
+  recursos_propios: 30,
+  credito_bancario_preaprobado: 25,
+  precalificacion_infonavit: 22,
+  precalificacion_fovissste: 22,
+  simulacion_hecha: 14,
+  tramite_iniciado: 12,
+  necesito_orientacion: 8,
+  no_se_si_califico: 4,
+};
+
+const STAGE_OPTIONS = [
+  ["explorando", "Apenas estoy explorando"],
+  ["idea_clara", "Ya tengo una idea clara"],
+  ["avanzar_pronto", "Quiero avanzar pronto"],
+  ["comparar", "Necesito comparar opciones"],
+  ["asesoria_antes", "Necesito asesoría antes de decidir"],
+];
+
 const PROPERTY_CONDITION_OPTIONS = [
   ["excelente", "Excelente"],
   ["bueno", "Bueno"],
@@ -74,6 +103,33 @@ const PRICE_BASIS_OPTIONS = [
 ];
 
 const UNCLEAR_PRICE_BASIS = new Set(["inversion", "sugerencia", "deseado", "no_seguro"]);
+const NAME_TITLE_PATTERN =
+  /^(sr|sra|srta|dr|dra|lic|ing|arq|mtro|prof)\.?\s+|^(don|doña)\s+/i;
+const LEAD_QUALITY = {
+  USEFUL: "useful",
+  CURIOUS: "curious",
+  SUSPICIOUS: "suspicious",
+  PROBABLE_BOT: "probable_bot",
+};
+const LEAD_QUALITY_LABELS = {
+  useful: "Lead útil",
+  curious: "Curioso",
+  suspicious: "Sospechoso",
+  probable_bot: "Probable bot",
+};
+const IMPOSSIBLE_FORM_SECONDS = 4;
+const VERY_FAST_FORM_SECONDS = 8;
+const CURIOUS_TIME_VALUES = new Set([
+  "explorando",
+  "sin_prisa",
+  "sin_fecha",
+  "solo_explorando",
+  "6_12_meses",
+  "largo",
+  "patrimonial",
+]);
+const SUSPICIOUS_TEXT_PATTERN =
+  /\b(test|asdf|qwerty|lorem|ipsum|fake|prueba|xxx|aaaa|bbbb|n\/a|na)\b/i;
 const HIGH_RISK_LAND_STATUS = new Set([
   "ejidal",
   "comunal",
@@ -85,64 +141,23 @@ const HIGH_RISK_LAND_STATUS = new Set([
 
 const baseQuestions = [
   {
-    id: "nombre",
-    type: "text",
-    inputType: "text",
-    kicker: "Antes de empezar",
-    title: "Antes de empezar, ¿cómo te llamas?",
-    summaryTitle: "Nombre",
-    help: "Me gusta dirigirme a cada persona por su nombre, porque cada caso inmobiliario es distinto.",
-    required: true,
-    placeholder: "Escribe tu nombre",
-    autocomplete: "given-name",
-  },
-  {
     id: "objetivo",
     type: "choice",
-    kicker: "Primer contexto",
-    title: ({ name }) => `${name}, ¿qué te gustaría resolver o lograr en este momento?`,
-    summaryTitle: "¿Qué te gustaría resolver o lograr en este momento?",
+    kicker: "Primer paso",
+    title: "¿Qué te gustaría resolver hoy?",
+    summaryTitle: "¿Qué te gustaría resolver hoy?",
     help:
-      "Puede ser comprar, vender, rentar, invertir o simplemente entender por dónde empezar. Elige lo que más se acerque a tu caso.",
+      "Elige lo que más se acerque a tu situación. A partir de eso solo te preguntaré lo necesario.",
     required: true,
     options: [
       ["comprar", "Comprar una propiedad"],
       ["vender", "Vender una propiedad"],
       ["rentar", "Rentar una propiedad"],
       ["poner_renta", "Poner en renta una propiedad"],
-      ["invertir", "Invertir en bienes raíces"],
       ["valuacion", "Saber cuánto vale mi propiedad"],
-      ["orientacion", "Necesito asesoría porque no sé por dónde empezar"],
-    ],
-  },
-  {
-    id: "contexto_inicial",
-    type: "group",
-    kicker: "Contexto",
-    title: ({ name }) => `Para orientarte mejor, ${name}, cuéntame dos cosas.`,
-    help:
-      "No tienes que tener todo claro. Esto me ayuda a entender en qué punto estás y qué te daría tranquilidad.",
-    fields: [
-      {
-        id: "etapa",
-        type: "choice",
-        label: "¿En qué punto estás ahorita?",
-        required: true,
-        options: [
-          ["explorando", "Apenas estoy explorando"],
-          ["idea_clara", "Ya tengo una idea clara"],
-          ["avanzar_pronto", "Quiero avanzar pronto"],
-          ["comparar", "Necesito comparar opciones"],
-          ["asesoria_antes", "Necesito asesoría antes de decidir"],
-        ],
-      },
-      {
-        id: "prioridad",
-        type: "choice",
-        label: "¿Qué te gustaría cuidar más en esta decisión?",
-        required: true,
-        options: HOME_NEEDS_OPTIONS,
-      },
+      ["invertir", "Invertir en bienes raíces"],
+      ["terreno", "Tengo un terreno"],
+      ["orientacion", "No sé por dónde empezar"],
     ],
   },
 ];
@@ -150,28 +165,15 @@ const baseQuestions = [
 const routeQuestions = {
   comprar: [
     {
-      id: "comprar_tipo",
-      type: "choice",
+      id: "comprar_inicio",
+      type: "group",
       kicker: "Compra",
-      title: "Para buscar bien, ¿qué tipo de propiedad te imaginas?",
+      title: "Para buscar bien, dime qué propiedad y zona tienes en mente.",
       help: "Si todavía no lo tienes definido, no pasa nada. Podemos partir de una idea general.",
-      required: true,
-      options: [
-        ["casa", "Casa"],
-        ["departamento", "Departamento"],
-        ["terreno", "Terreno"],
-        ["local_oficina", "Local u oficina"],
-        ["aun_no_se", "Aún no sé"],
+      fields: [
+        { id: "comprar_tipo", type: "choice", label: "Tipo de propiedad", required: true, options: [["casa", "Casa"], ["departamento", "Departamento"], ["terreno", "Terreno"], ["local_oficina", "Local u oficina"], ["aun_no_se", "Aún no sé"]] },
+        { id: "comprar_zona", type: "textarea", label: "Zonas que te harían sentido", required: true, placeholder: "Ej. zona o colonia, municipio, cerca de mi trabajo..." },
       ],
-    },
-    {
-      id: "comprar_zona",
-      type: "textarea",
-      kicker: "Zona",
-      title: "¿Qué zonas te harían sentido?",
-      help: "Puedes mencionar colonias, municipios, cercanía al trabajo, escuelas o cualquier referencia útil.",
-      required: true,
-      placeholder: "Ej. zona o colonia, municipio, cerca de mi trabajo...",
     },
     {
       id: "comprar_datos_clave",
@@ -199,6 +201,7 @@ const routeQuestions = {
       fields: [
         { id: "comprar_presupuesto", type: "choice", label: "Presupuesto aproximado", required: true, options: [["menos_1_5m", "Menos de $1.5 M"], ["1_5m_3m", "$1.5 M a $3 M"], ["3m_5m", "$3 M a $5 M"], ["5m_8m", "$5 M a $8 M"], ["mas_8m", "Más de $8 M"], ["por_definir", "Aún por definir"]] },
         { id: "comprar_pago", type: "choice", label: "Forma de pago", required: true, options: [["credito_bancario", "Crédito hipotecario"], ["infonavit_fovissste", "Infonavit o Fovissste"], ["recursos_propios", "Recursos propios"], ["mixto", "Mixto"], ["necesito_orientacion", "Necesito orientación"]] },
+        { id: "comprar_credito_estado", type: "choice", label: "¿Ya tienes alguna preaprobación o precalificación de crédito?", required: true, options: CREDIT_STATUS_OPTIONS },
       ],
     },
     {
@@ -208,6 +211,7 @@ const routeQuestions = {
       title: "¿Qué debe cuidar tu búsqueda?",
       help: "Elige hasta 3 prioridades para enfocar mejor las opciones.",
       fields: [
+        { id: "etapa", type: "choice", label: "¿En qué punto estás ahorita?", required: true, options: STAGE_OPTIONS },
         { id: "comprar_tiempo", type: "choice", label: "Tiempo para comprar", required: true, options: [["0_3_meses", "0 a 3 meses"], ["3_6_meses", "3 a 6 meses"], ["6_12_meses", "6 a 12 meses"], ["sin_prisa", "Sin prisa, cuando encuentre lo ideal"]] },
         { id: "comprar_necesidades", type: "multichoice", label: "Top necesidades", required: true, max: 3, statePath: "buyDetails.topNeeds", options: HOME_NEEDS_OPTIONS },
       ],
@@ -215,27 +219,15 @@ const routeQuestions = {
   ],
   vender: [
     {
-      id: "vender_tipo",
-      type: "choice",
+      id: "vender_inicio",
+      type: "group",
       kicker: "Venta",
-      title: "Cuéntame, ¿qué tipo de propiedad estás pensando vender?",
-      required: true,
-      options: [
-        ["casa", "Casa"],
-        ["departamento", "Departamento"],
-        ["terreno", "Terreno"],
-        ["local_oficina", "Local u oficina"],
-        ["otro", "Otro"],
-      ],
-    },
-    {
-      id: "vender_zona",
-      type: "textarea",
-      kicker: "Ubicación",
-      title: "¿En qué zona o colonia se encuentra la propiedad?",
+      title: "Cuéntame qué propiedad quieres vender y dónde está.",
       help: "No necesito la dirección exacta todavía; con colonia y ciudad es suficiente para iniciar.",
-      required: true,
-      placeholder: "Ej. zona o colonia, municipio o ciudad",
+      fields: [
+        { id: "vender_tipo", type: "choice", label: "Tipo de propiedad", required: true, options: [["casa", "Casa"], ["departamento", "Departamento"], ["terreno", "Terreno"], ["local_oficina", "Local u oficina"], ["otro", "Otro"]] },
+        { id: "vender_zona", type: "textarea", label: "Zona o colonia", required: true, placeholder: "Ej. zona o colonia, municipio o ciudad" },
+      ],
     },
     {
       id: "vender_datos_clave",
@@ -280,6 +272,7 @@ const routeQuestions = {
       kicker: "Tiempo",
       title: "Para cuidar la estrategia, falta este contexto.",
       fields: [
+        { id: "etapa", type: "choice", label: "¿En qué punto estás ahorita?", required: true, options: STAGE_OPTIONS },
         { id: "vender_documentos", type: "choice", label: "Documentación declarada", required: true, options: [["en_regla", "Escrituras y pagos en regla"], ["credito_vigente", "Tiene crédito vigente"], ["requiere_revision", "Necesita revisión"], ["sucesion", "Hay sucesión o tema legal"], ["no_se", "No estoy seguro"]] },
         { id: "vender_tiempo", type: "choice", label: "Urgencia", required: true, options: [["urgente", "Lo antes posible"], ["1_3_meses", "En 1 a 3 meses"], ["3_6_meses", "En 3 a 6 meses"], ["sin_prisa", "Sin prisa, pero quiero prepararme"]] },
         { id: "vender_motivo", type: "choice", label: "Motivo principal", required: true, options: [["cambio_casa", "Cambio de casa"], ["liquidez", "Necesito liquidez"], ["inversion", "Mover inversión"], ["herencia", "Herencia o tema familiar"], ["otro", "Otro"]] },
@@ -289,27 +282,15 @@ const routeQuestions = {
   ],
   rentar: [
     {
-      id: "rentar_tipo",
-      type: "choice",
+      id: "rentar_inicio",
+      type: "group",
       kicker: "Renta",
-      title: "Para orientarte mejor, ¿qué tipo de propiedad necesitas rentar?",
-      required: true,
-      options: [
-        ["casa", "Casa"],
-        ["departamento", "Departamento"],
-        ["habitacion", "Habitación"],
-        ["local_oficina", "Local u oficina"],
-        ["otro", "Otro"],
-      ],
-    },
-    {
-      id: "rentar_zona",
-      type: "textarea",
-      kicker: "Zona",
-      title: "¿Qué zona te funcionaría mejor para rentar?",
+      title: "Para orientarte mejor, dime qué necesitas rentar y en qué zona.",
       help: "Puede ser por trabajo, escuela, movilidad, familia o estilo de vida.",
-      required: true,
-      placeholder: "Colonias, ciudad, cercanía a trabajo o escuela...",
+      fields: [
+        { id: "rentar_tipo", type: "choice", label: "Tipo de propiedad", required: true, options: [["casa", "Casa"], ["departamento", "Departamento"], ["habitacion", "Habitación"], ["local_oficina", "Local u oficina"], ["otro", "Otro"]] },
+        { id: "rentar_zona", type: "textarea", label: "Zona que te funcionaría", required: true, placeholder: "Colonias, ciudad, cercanía a trabajo o escuela..." },
+      ],
     },
     {
       id: "rentar_presupuesto_tiempo",
@@ -317,6 +298,7 @@ const routeQuestions = {
       kicker: "Presupuesto",
       title: "¿Qué rango y tiempo te funcionan?",
       fields: [
+        { id: "etapa", type: "choice", label: "¿En qué punto estás ahorita?", required: true, options: STAGE_OPTIONS },
         { id: "rentar_presupuesto", type: "choice", label: "Presupuesto mensual", required: true, options: [["menos_10k", "Menos de $10,000"], ["10k_18k", "$10,000 a $18,000"], ["18k_30k", "$18,000 a $30,000"], ["30k_50k", "$30,000 a $50,000"], ["mas_50k", "Más de $50,000"], ["por_definir", "Aún por definir"]] },
         { id: "rentar_tiempo", type: "choice", label: "Fecha o tiempo de mudanza", required: true, options: [["inmediato", "De inmediato"], ["este_mes", "Este mes"], ["1_3_meses", "En 1 a 3 meses"], ["sin_fecha", "Aún no tengo fecha"]] },
       ],
@@ -335,28 +317,15 @@ const routeQuestions = {
   ],
   poner_renta: [
     {
-      id: "poner_renta_tipo",
-      type: "choice",
+      id: "poner_renta_inicio",
+      type: "group",
       kicker: "Arrendamiento",
-      title: "¿Qué tipo de propiedad quieres poner en renta?",
+      title: "¿Qué propiedad quieres poner en renta y dónde está?",
       help: "Con esto puedo pensar en el perfil de inquilino y estrategia de promoción adecuada.",
-      required: true,
-      options: [
-        ["casa", "Casa"],
-        ["departamento", "Departamento"],
-        ["local_oficina", "Local u oficina"],
-        ["bodega", "Bodega"],
-        ["otro", "Otro"],
+      fields: [
+        { id: "poner_renta_tipo", type: "choice", label: "Tipo de propiedad", required: true, options: [["casa", "Casa"], ["departamento", "Departamento"], ["local_oficina", "Local u oficina"], ["bodega", "Bodega"], ["otro", "Otro"]] },
+        { id: "poner_renta_ubicacion", type: "textarea", label: "Zona o colonia", required: true, placeholder: "Zona o colonia, ciudad o referencia general" },
       ],
-    },
-    {
-      id: "poner_renta_ubicacion",
-      type: "textarea",
-      kicker: "Ubicación",
-      title: "¿En qué zona o colonia se encuentra la propiedad?",
-      help: "No hace falta dirección exacta; una referencia general basta para empezar.",
-      required: true,
-      placeholder: "Zona o colonia, ciudad o referencia general",
     },
     {
       id: "poner_renta_estado_ocupacion",
@@ -386,6 +355,7 @@ const routeQuestions = {
       title: "¿Qué te preocupa más al rentarla?",
       help: "Elige hasta 3 preocupaciones y dime qué tan pronto quieres avanzar.",
       fields: [
+        { id: "etapa", type: "choice", label: "¿En qué punto estás ahorita?", required: true, options: STAGE_OPTIONS },
         { id: "poner_renta_preocupaciones", type: "multichoice", label: "Preocupaciones principales", required: true, max: 3, options: [["inquilino", "Encontrar buen inquilino"], ["pago", "Pago puntual"], ["contrato", "Contrato y seguridad legal"], ["mantenimiento", "Cuidado del inmueble"], ["precio", "Definir renta adecuada"], ["rapidez", "Rentar rápido"]] },
         { id: "poner_renta_urgencia", type: "choice", label: "Urgencia", required: true, options: [["urgente", "Lo antes posible"], ["1_3_meses", "En 1 a 3 meses"], ["sin_prisa", "Sin prisa"]] },
         { id: "poner_renta_disposicion", type: "choice", label: "¿Te gustaría llamada o cita?", required: true, options: [["llamada", "Llamada"], ["cita", "Cita"], ["whatsapp", "Primero WhatsApp"], ["flexible", "Lo revisamos"]] },
@@ -427,6 +397,7 @@ const routeQuestions = {
       fields: [
         { id: "invertir_monto", type: "choice", label: "Presupuesto", required: true, options: [["menos_1m", "Menos de $1 M"], ["1m_3m", "$1 M a $3 M"], ["3m_5m", "$3 M a $5 M"], ["5m_10m", "$5 M a $10 M"], ["mas_10m", "Más de $10 M"], ["por_definir", "Aún por definir"]] },
         { id: "invertir_meta", type: "choice", label: "Objetivo de inversión", required: true, options: [["plusvalia", "Plusvalía"], ["renta_mensual", "Renta mensual"], ["seguridad", "Seguridad patrimonial"], ["crecimiento", "Crecimiento de capital"], ["diversificar", "Diversificar patrimonio"]] },
+        { id: "invertir_credito_estado", type: "choice", label: "¿Ya tienes alguna preaprobación o precalificación de crédito?", required: true, showIf: { id: "invertir_tipo", values: ["residencial", "terreno", "comercial", "preventas"] }, options: CREDIT_STATUS_OPTIONS },
       ],
     },
     {
@@ -436,6 +407,7 @@ const routeQuestions = {
       title: "¿Qué factores deben pesar más en tu inversión?",
       help: "Elige hasta 3.",
       fields: [
+        { id: "etapa", type: "choice", label: "¿En qué punto estás ahorita?", required: true, options: STAGE_OPTIONS },
         { id: "invertir_factores", type: "multichoice", label: "Top factores", required: true, max: 3, statePath: "investmentDetails.topNeeds", options: [["plusvalia", "Plusvalía"], ["renta_mensual", "Renta mensual"], ["liquidez", "Liquidez"], ["seguridad", "Seguridad jurídica"], ["ubicacion", "Ubicación"], ["riesgo", "Bajo riesgo"], ["facilidad", "Facilidad de administración"]] },
         { id: "invertir_horizonte", type: "choice", label: "Tiempo para invertir", required: true, options: [["corto", "Menos de 1 año"], ["medio", "1 a 3 años"], ["largo", "3 a 5 años"], ["patrimonial", "Más de 5 años"]] },
       ],
@@ -443,27 +415,15 @@ const routeQuestions = {
   ],
   valuacion: [
     {
-      id: "valuacion_tipo",
-      type: "choice",
+      id: "valuacion_inicio",
+      type: "group",
       kicker: "Valor",
-      title: "Para estimar mejor, ¿qué tipo de propiedad quieres valorar?",
-      required: true,
-      options: [
-        ["casa", "Casa"],
-        ["departamento", "Departamento"],
-        ["terreno", "Terreno"],
-        ["local_oficina", "Local u oficina"],
-        ["otro", "Otro"],
-      ],
-    },
-    {
-      id: "valuacion_ubicacion",
-      type: "textarea",
-      kicker: "Ubicación",
-      title: "¿En qué zona o colonia se encuentra la propiedad?",
+      title: "Para estimar mejor, dime qué propiedad quieres valorar y dónde está.",
       help: "La ubicación es clave para comparar con referencias reales de mercado.",
-      required: true,
-      placeholder: "Zona o colonia, ciudad y referencias generales",
+      fields: [
+        { id: "valuacion_tipo", type: "choice", label: "Tipo de propiedad", required: true, options: [["casa", "Casa"], ["departamento", "Departamento"], ["terreno", "Terreno"], ["local_oficina", "Local u oficina"], ["otro", "Otro"]] },
+        { id: "valuacion_ubicacion", type: "textarea", label: "Zona o colonia", required: true, placeholder: "Zona o colonia, ciudad y referencias generales" },
+      ],
     },
     {
       id: "valuacion_datos_clave",
@@ -507,28 +467,69 @@ const routeQuestions = {
       kicker: "Motivo",
       title: "¿Para qué necesitas la referencia?",
       fields: [
+        { id: "etapa", type: "choice", label: "¿En qué punto estás ahorita?", required: true, options: STAGE_OPTIONS },
         { id: "valuacion_documentos", type: "choice", label: "Documentación declarada", required: true, options: [["si", "Sí"], ["parcial", "Algunos"], ["no", "No por ahora"], ["no_se", "No estoy seguro qué se necesita"]] },
         { id: "valuacion_motivo", type: "choice", label: "Motivo de valuación", required: true, options: [["vender", "Estoy pensando vender"], ["rentar", "Quiero ponerla en renta"], ["herencia", "Herencia o tema familiar"], ["credito", "Crédito o trámite"], ["curiosidad", "Quiero tener claridad"]] },
       ],
     },
   ],
-  orientacion: [
+  terreno: [
     {
-      id: "orientacion_interes",
-      type: "choice",
-      kicker: "Dirección",
-      title: "¿Qué tema se parece más a lo que necesitas resolver?",
-      required: true,
-      options: [["comprar", "Comprar"], ["vender", "Vender"], ["rentar", "Rentar"], ["invertir", "Invertir"], ["presupuesto", "Definir presupuesto"], ["no_se", "No estoy seguro"]],
+      id: "terreno_inicio",
+      type: "group",
+      kicker: "Terreno",
+      title: "Para ordenar tu caso, dime qué necesitas resolver y dónde está el terreno.",
+      help: "Los terrenos requieren revisar uso, régimen y viabilidad antes de tomar una decisión.",
+      fields: [
+        { id: "terreno_intencion", type: "choice", label: "Necesidad principal", required: true, options: [["vender", "Quiero venderlo"], ["comprar", "Quiero comprar un terreno"], ["valuar", "Quiero saber cuánto vale"], ["rentar", "Quiero ponerlo en renta"], ["desarrollar", "Quiero construir o desarrollar"], ["regularizar", "Necesito revisar situación legal"], ["orientacion", "No estoy seguro"]] },
+        { id: "terreno_ubicacion", type: "textarea", label: "Zona del terreno", required: true, placeholder: "Ej. municipio, zona, carretera, comunidad o referencia" },
+      ],
     },
     {
-      id: "orientacion_zona",
-      type: "textarea",
-      kicker: "Zona",
-      title: "¿En qué zona o ciudad estás pensando?",
+      id: "terreno_datos_clave",
+      type: "group",
+      kicker: "Datos clave",
+      title: "Aterricemos lo mínimo para saber qué conviene revisar.",
+      fields: [
+        { id: "terreno_superficie", type: "text", label: "Superficie aproximada", placeholder: "Ej. 300 m2, 1 hectárea", required: true },
+        { id: "terreno_situacion", type: "choice", label: "Situación legal o régimen", required: true, options: TERRAIN_STATUS_OPTIONS },
+        { id: "terreno_uso", type: "choice", label: "Uso actual o pensado", required: true, options: [["habitacional", "Habitacional"], ["comercial", "Comercial"], ["agricola", "Agrícola"], ["inversion", "Inversión"], ["desarrollo", "Desarrollo"], ["no_se", "No estoy seguro"]] },
+      ],
+    },
+    {
+      id: "terreno_servicios_contexto",
+      type: "group",
+      kicker: "Viabilidad",
+      title: "¿Qué sabes sobre accesos y servicios?",
+      help: "Elige hasta 3 puntos. Esto ayuda a separar una oportunidad clara de un caso que requiere revisión.",
+      fields: [
+        { id: "terreno_servicios", type: "multichoice", label: "Acceso y servicios", required: true, max: 3, statePath: "landDetails.topNeeds", options: [["acceso", "Acceso claro"], ["agua", "Agua"], ["luz", "Luz"], ["drenaje", "Drenaje"], ["sin_servicios", "Sin servicios"], ["no_se", "No estoy seguro"]] },
+        { id: "terreno_documentos", type: "choice", label: "Documentación declarada", required: true, options: [["en_regla", "Escrituras y pagos en regla"], ["parcial", "Tengo algunos documentos"], ["requiere_revision", "Necesita revisión"], ["no_se", "No estoy seguro"]] },
+      ],
+    },
+    {
+      id: "terreno_prioridad",
+      type: "group",
+      kicker: "Siguiente paso",
+      title: "¿Qué te ayudaría más en este momento?",
+      fields: [
+        { id: "etapa", type: "choice", label: "¿En qué punto estás ahorita?", required: true, options: STAGE_OPTIONS },
+        { id: "terreno_tiempo", type: "choice", label: "Tiempo aproximado", required: true, options: [["urgente", "Lo antes posible"], ["1_3_meses", "En 1 a 3 meses"], ["3_6_meses", "En 3 a 6 meses"], ["sin_prisa", "Sin prisa, quiero claridad"]] },
+        { id: "terreno_necesidad", type: "choice", label: "Prioridad principal", required: true, options: [["seguridad", "Seguridad legal"], ["valor", "Conocer valor real"], ["estrategia", "Definir estrategia"], ["viabilidad", "Saber si es viable"], ["acompanamiento", "Acompañamiento profesional"]] },
+      ],
+    },
+  ],
+  orientacion: [
+    {
+      id: "orientacion_inicio",
+      type: "group",
+      kicker: "Dirección",
+      title: "¿Qué tema se parece más a lo que necesitas y en qué zona estás pensando?",
       help: "Puede ser una ciudad, colonia o solo una referencia general.",
-      required: true,
-      placeholder: "Ej. Morelia, zona sur, cerca del trabajo...",
+      fields: [
+        { id: "orientacion_interes", type: "choice", label: "Tema principal", required: true, options: [["comprar", "Comprar"], ["vender", "Vender"], ["rentar", "Rentar"], ["invertir", "Invertir"], ["presupuesto", "Definir presupuesto"], ["no_se", "No estoy seguro"]] },
+        { id: "orientacion_zona", type: "textarea", label: "Zona o ciudad", required: true, placeholder: "Ej. Morelia, zona sur, cerca del trabajo..." },
+      ],
     },
     {
       id: "orientacion_situacion",
@@ -546,6 +547,7 @@ const routeQuestions = {
       title: "¿Qué te ayudaría a sentir más claridad?",
       help: "Elige hasta 3 prioridades y dime cuándo te gustaría avanzar.",
       fields: [
+        { id: "etapa", type: "choice", label: "¿En qué punto estás ahorita?", required: true, options: STAGE_OPTIONS },
         { id: "orientacion_preocupacion", type: "choice", label: "Preocupación principal", required: true, options: [["dinero", "Tomar una mala decisión financiera"], ["proceso", "No entender el proceso"], ["tiempo", "Perder tiempo"], ["seguridad", "Seguridad legal"], ["opciones", "No saber qué opciones hay"]] },
         { id: "orientacion_tiempo", type: "choice", label: "Tiempo aproximado", required: true, options: [["esta_semana", "Esta semana"], ["este_mes", "Este mes"], ["sin_prisa", "Sin prisa"], ["solo_explorando", "Solo estoy explorando"]] },
         { id: "orientacion_top_prioridades", type: "multichoice", label: "Top prioridades", required: true, max: 3, statePath: "preferences.topNeeds", options: HOME_NEEDS_OPTIONS },
@@ -559,9 +561,11 @@ const contactQuestions = [
     id: "preferencia_contacto",
     type: "group",
     kicker: "Seguimiento",
-    title: ({ name }) => `${name}, ¿cómo prefieres que te contacte?`,
-    help: "La idea es darte seguimiento por el medio y horario que te resulten más cómodos.",
+    title: "Para darte seguimiento, dime cómo prefieres que te contacte.",
+    help: "Con esto puedo continuar la conversación por el medio y horario que te resulten más cómodos.",
     fields: [
+      { id: "prioridad", type: "choice", label: "¿Qué te gustaría cuidar más en esta decisión?", required: true, options: HOME_NEEDS_OPTIONS },
+      { id: "nombre", type: "text", inputType: "text", label: "Nombre", required: true, placeholder: "Escribe tu nombre", autocomplete: "given-name" },
       { id: "medio_contacto", type: "choice", label: "Medio preferido", required: true, options: [["whatsapp", "WhatsApp"], ["llamada", "Llamada"], ["correo", "Correo electrónico"], ["cualquiera", "El que sea más práctico"]] },
       { id: "horario_contacto", type: "choice", label: "Horario preferido", required: true, options: [["manana", "Mañana"], ["mediodia", "Mediodía"], ["tarde", "Tarde"], ["noche", "Noche"], ["flexible", "Horario flexible"]] },
     ],
@@ -604,6 +608,8 @@ let hasUserInteracted = false;
 let currentIndex = 0;
 let isFinished = false;
 let formStartedAt = 0;
+let lastStepViewed = "";
+let lastStepCompleted = "";
 let whatsappUnlockAt = 0;
 
 const form = document.querySelector("#advisoryForm");
@@ -641,6 +647,7 @@ const LAND_STATUS_FIELDS = new Set([
   "comprar_terreno_situacion",
   "vender_terreno_situacion",
   "valuacion_terreno_situacion",
+  "terreno_situacion",
 ]);
 const LAND_REVIEW_CHECKS = [
   "Revisar régimen de propiedad",
@@ -664,6 +671,7 @@ const OBJECTIVE_SCORE = {
   invertir: 14,
   rentar: 10,
   valuacion: 12,
+  terreno: 12,
   orientacion: 6,
 };
 const TIME_SCORE_GROUPS = [
@@ -716,6 +724,7 @@ const BUDGET_FIELD_IDS = [
   "valuacion_precio",
 ];
 const PAYMENT_FIELD_IDS = ["comprar_pago"];
+const CREDIT_STATUS_FIELD_IDS = ["comprar_credito_estado", "invertir_credito_estado"];
 const TIME_FIELD_IDS = [
   "tiempo",
   "comprar_tiempo",
@@ -728,6 +737,7 @@ const TIME_FIELD_IDS = [
   "urgencia",
   "poner_renta_urgencia",
   "orientacion_tiempo",
+  "terreno_tiempo",
 ];
 const NEED_FIELD_IDS = [
   "prioridad",
@@ -739,6 +749,8 @@ const NEED_FIELD_IDS = [
   "comprar_terreno_servicios",
   "vender_terreno_servicios",
   "valuacion_terreno_servicios",
+  "terreno_servicios",
+  "terreno_necesidad",
 ];
 const CONTACT_PREFERENCE_FIELDS = [
   "medio_contacto",
@@ -761,6 +773,7 @@ const LOCATION_FIELD_IDS = [
   "invertir_zona",
   "valuacion_ubicacion",
   "orientacion_zona",
+  "terreno_ubicacion",
 ];
 const SIZE_FIELD_IDS = [
   "comprar_tamano",
@@ -769,6 +782,7 @@ const SIZE_FIELD_IDS = [
   "comprar_terreno_superficie",
   "vender_terreno_superficie",
   "valuacion_terreno_superficie",
+  "terreno_superficie",
 ];
 const GENERAL_LOCATION_FIELD_IDS = new Set(LOCATION_FIELD_IDS);
 const CONDITION_FIELD_IDS = ["vender_estado", "poner_renta_estado", "valuacion_estado"];
@@ -778,7 +792,7 @@ const PRICE_BASIS_FIELD_IDS = [
   "poner_renta_precio_base",
   "valuacion_precio_base",
 ];
-const DOCUMENTATION_FIELD_IDS = ["vender_documentos", "valuacion_documentos"];
+const DOCUMENTATION_FIELD_IDS = ["vender_documentos", "valuacion_documentos", "terreno_documentos"];
 const MOTIVATION_FIELD_IDS = [
   "vender_motivo",
   "valuacion_motivo",
@@ -786,8 +800,14 @@ const MOTIVATION_FIELD_IDS = [
   "invertir_meta",
   "orientacion_interes",
   "orientacion_preocupacion",
+  "terreno_intencion",
 ];
 const CRM_DISABLED_MODE = "disabled";
+const CRM_CONFIG = {
+  enabled: true,
+  endpoint: "https://hook.us2.make.com/xdd8pkcr3bjekbyyf1q3omfmdwe2ykog",
+  mode: "make",
+};
 const allRouteQuestionIds = [
   ...new Set([
     ...Object.values(routeQuestions).flatMap((route) => route.flatMap(getQuestionIds)),
@@ -797,6 +817,10 @@ const allRouteQuestionIds = [
 
 function getFlow() {
   const selectedObjective = answers.objetivo?.value;
+  if (!selectedObjective) {
+    return baseQuestions.filter(isQuestionVisible);
+  }
+
   const route = selectedObjective ? routeQuestions[selectedObjective] || [] : [];
   return [...baseQuestions, ...route, ...contactQuestions].filter(isQuestionVisible);
 }
@@ -883,26 +907,35 @@ function hasSuspiciousMarkup(value) {
 
 function normalizePhone(value) {
   return String(value || "")
-    .replace(/[^\d+\-()\s]/g, "")
-    .replace(/\s+/g, " ")
+    .replace(/\D/g, "")
     .trim();
 }
 
 function getPhoneDigits(value) {
-  return normalizePhone(value).replace(/\D/g, "");
+  return normalizePhone(value);
 }
 
-function isValidName(value) {
-  return /^[A-Za-zÁÉÍÓÚáéíóúÑñÜü\s'-]{2,80}$/.test(String(value || ""));
+function getNameValidationError(value) {
+  const name = String(value || "").trim();
+
+  if (NAME_TITLE_PATTERN.test(name)) {
+    return "Escribe tu nombre real, sin títulos como Sr., Dra., Lic., Don o Doña.";
+  }
+
+  if (!/^[A-Za-zÁÉÍÓÚáéíóúÑñÜü\s]{2,80}$/.test(name)) {
+    return "Escribe tu nombre solo con letras, espacios, acentos y ñ.";
+  }
+
+  if (!/[A-Za-zÁÉÍÓÚáéíóúÑñÜü]{2,}/.test(name) || /(.)\1{3,}/i.test(name.replace(/\s+/g, ""))) {
+    return "Escribe un nombre real, sin repeticiones o texto basura.";
+  }
+
+  return "";
 }
 
 function isValidPhone(value) {
   const rawValue = String(value || "").trim();
-  const hasValidCharacters = /^\+?[\d\s()-]+$/.test(rawValue);
-  const hasOnlyOneLeadingPlus = !rawValue.includes("+") || rawValue.startsWith("+");
-  const digits = getPhoneDigits(rawValue);
-
-  return hasValidCharacters && hasOnlyOneLeadingPlus && digits.length >= 10 && digits.length <= 15;
+  return /^\d{10,15}$/.test(rawValue);
 }
 
 function isValidCity(value) {
@@ -1032,11 +1065,11 @@ function generateLeadId() {
 function getUtmParams() {
   const params = new URLSearchParams(window.location.search);
   return {
-    source: sanitizeText(params.get("utm_source") || "", 120),
-    medium: sanitizeText(params.get("utm_medium") || "", 120),
-    campaign: sanitizeText(params.get("utm_campaign") || "", 160),
-    content: sanitizeText(params.get("utm_content") || "", 160),
-    term: sanitizeText(params.get("utm_term") || "", 160),
+    utm_source: sanitizeText(params.get("utm_source") || "", 120),
+    utm_medium: sanitizeText(params.get("utm_medium") || "", 120),
+    utm_campaign: sanitizeText(params.get("utm_campaign") || "", 160),
+    utm_content: sanitizeText(params.get("utm_content") || "", 160),
+    utm_term: sanitizeText(params.get("utm_term") || "", 160),
   };
 }
 
@@ -1173,6 +1206,194 @@ function getTemperature(score) {
   };
 }
 
+function getElapsedFormSeconds() {
+  return formStartedAt ? Math.max(0, Math.round((Date.now() - formStartedAt) / 1000)) : 0;
+}
+
+function getAnswerTextCorpus(state) {
+  return Object.keys(state || {})
+    .filter((id) => !["consentimiento"].includes(id))
+    .map((id) => `${id} ${getStateLabel(state, id)} ${String(getStateValue(state, id))}`)
+    .join(" ")
+    .toLowerCase();
+}
+
+function hasRepeatedPhonePattern(value) {
+  const digits = getPhoneDigits(value);
+  return /^(\d)\1{9,14}$/.test(digits) || /^(1234567890|0123456789)$/.test(digits);
+}
+
+function hasSuspiciousNamePattern(value) {
+  const name = normalizeInventoryText(value);
+  const compact = name.replace(/\s+/g, "");
+
+  return (
+    !name ||
+    SUSPICIOUS_TEXT_PATTERN.test(name) ||
+    /(.)\1{3,}/i.test(compact) ||
+    compact.length < 2
+  );
+}
+
+function countSparseAnswers(state) {
+  const sparseValues = new Set([
+    "no_se",
+    "aun_no_se",
+    "por_definir",
+    "no",
+    "no_seguro",
+    "no_aplica",
+    "orientacion",
+  ]);
+
+  return Object.keys(state || {}).reduce((count, id) => {
+    const value = getStateValue(state, id);
+    if (Array.isArray(value)) {
+      return count + value.filter((item) => sparseValues.has(item)).length;
+    }
+
+    return count + (sparseValues.has(value) ? 1 : 0);
+  }, 0);
+}
+
+function classifyLeadQuality(state) {
+  const reasons = [];
+  const flags = {
+    validName: false,
+    validPhone: false,
+    humanTime: false,
+    coherentAnswers: true,
+    suspiciousName: false,
+    suspiciousPhone: false,
+    abnormalSpeed: false,
+    impossibleSpeed: false,
+    repetitiveText: false,
+    sparseInformation: false,
+    honeypotFilled: isLikelyBot(),
+  };
+  const addReason = (reason) => addUnique(reasons, reason);
+  const name = getStateLabel(state, "nombre");
+  const phone = getStateValue(state, "whatsapp");
+  const elapsedSeconds = getElapsedFormSeconds();
+  const textCorpus = getAnswerTextCorpus(state);
+  const answeredRouteCount = Object.keys(buildRouteResponses(state, getStateValue(state, "objetivo"))).length;
+  const sparseAnswerCount = countSparseAnswers(state);
+  const timeValue = getTimeUrgencyValue(state);
+  const acceptsImmediateContact = CONTACT_PREFERENCE_FIELDS.some((id) =>
+    ["llamada", "cita", "flexible", "cualquiera"].includes(getStateValue(state, id))
+  );
+  const hasContactPreference = Boolean(getStateValue(state, "medio_contacto"));
+  let riskSignals = 0;
+  let botSignals = 0;
+
+  flags.validName = Boolean(name) && !getNameValidationError(name);
+  flags.validPhone = isValidPhone(phone);
+  flags.humanTime = elapsedSeconds >= VERY_FAST_FORM_SECONDS;
+  flags.suspiciousName = !flags.validName || hasSuspiciousNamePattern(name);
+  flags.suspiciousPhone = !flags.validPhone || hasRepeatedPhonePattern(phone);
+  flags.abnormalSpeed = Boolean(elapsedSeconds && elapsedSeconds < VERY_FAST_FORM_SECONDS);
+  flags.impossibleSpeed = Boolean(elapsedSeconds && elapsedSeconds < IMPOSSIBLE_FORM_SECONDS);
+  flags.repetitiveText = /(.)\1{9,}/i.test(textCorpus) || SUSPICIOUS_TEXT_PATTERN.test(textCorpus);
+  flags.sparseInformation = sparseAnswerCount >= 4 || answeredRouteCount <= 1;
+  flags.coherentAnswers = !flags.repetitiveText && !flags.suspiciousName;
+
+  if (flags.validName) {
+    addReason("Nombre válido.");
+  } else {
+    riskSignals += 1;
+    addReason("Nombre inválido o extraño.");
+  }
+
+  if (flags.validPhone) {
+    addReason("Teléfono válido.");
+  } else {
+    riskSignals += 1;
+    addReason("Teléfono inválido o dudoso.");
+  }
+
+  if (flags.honeypotFilled) {
+    botSignals += 3;
+    addReason("Honeypot completado.");
+  }
+
+  if (flags.impossibleSpeed) {
+    botSignals += 2;
+    addReason("Tiempo de respuesta imposible para una persona.");
+  } else if (flags.abnormalSpeed) {
+    riskSignals += 1;
+    addReason("Tiempo de respuesta anormalmente rápido.");
+  } else if (flags.humanTime) {
+    addReason("Tiempo de respuesta humano.");
+  }
+
+  if (flags.suspiciousName) {
+    riskSignals += 1;
+  }
+
+  if (flags.suspiciousPhone) {
+    riskSignals += 1;
+    addReason("Patrón de teléfono dudoso.");
+  }
+
+  if (flags.repetitiveText) {
+    riskSignals += 1;
+    botSignals += 1;
+    addReason("Respuestas con patrón repetitivo o de prueba.");
+  }
+
+  if (flags.sparseInformation) {
+    addReason("Información incompleta o muy exploratoria.");
+  }
+
+  let classification = LEAD_QUALITY.USEFUL;
+  let qualityScore = 85;
+
+  if (botSignals >= 2 || (flags.impossibleSpeed && (flags.suspiciousName || flags.repetitiveText))) {
+    classification = LEAD_QUALITY.PROBABLE_BOT;
+    qualityScore = 10;
+  } else if (riskSignals >= 3 || (flags.abnormalSpeed && (flags.suspiciousPhone || flags.repetitiveText))) {
+    classification = LEAD_QUALITY.SUSPICIOUS;
+    qualityScore = 30;
+  } else if (
+    flags.sparseInformation ||
+    CURIOUS_TIME_VALUES.has(timeValue) ||
+    (hasContactPreference && !acceptsImmediateContact)
+  ) {
+    classification = LEAD_QUALITY.CURIOUS;
+    qualityScore = 60;
+  }
+
+  return {
+    value: classification,
+    label: LEAD_QUALITY_LABELS[classification],
+    score: qualityScore,
+    reasons,
+    flags,
+    shouldTriggerUrgentAlert:
+      classification !== LEAD_QUALITY.SUSPICIOUS &&
+      classification !== LEAD_QUALITY.PROBABLE_BOT,
+    canBeHotLead:
+      classification !== LEAD_QUALITY.SUSPICIOUS &&
+      classification !== LEAD_QUALITY.PROBABLE_BOT,
+  };
+}
+
+function applyLeadQualityGuardrails(qualification, leadQuality) {
+  if (![LEAD_QUALITY.SUSPICIOUS, LEAD_QUALITY.PROBABLE_BOT].includes(leadQuality.value)) {
+    return qualification;
+  }
+
+  return {
+    ...qualification,
+    temperatura:
+      leadQuality.value === LEAD_QUALITY.PROBABLE_BOT ? "Lead no calificado" : "Lead en revisión",
+    urgencia: "Baja",
+    etapaPipeline: "Revisión de calidad",
+    accionRecomendada:
+      "No generar alerta urgente. Revisar calidad del lead antes de priorizar seguimiento.",
+  };
+}
+
 function getTimeScore(state) {
   let bestMatch = { score: 0, reason: "" };
 
@@ -1211,6 +1432,66 @@ function getPaymentScore(state) {
   }
 
   return { score: 0, reason: "" };
+}
+
+function getCreditStatusValue(state) {
+  return getFirstStateValue(state, CREDIT_STATUS_FIELD_IDS);
+}
+
+function getCreditStatusLabel(state) {
+  return getFirstStateLabel(state, CREDIT_STATUS_FIELD_IDS);
+}
+
+function getCreditType(value) {
+  const creditTypes = {
+    credito_bancario_preaprobado: "credito_bancario",
+    precalificacion_infonavit: "infonavit",
+    precalificacion_fovissste: "fovissste",
+    simulacion_hecha: "simulacion",
+    tramite_iniciado: "tramite",
+    necesito_orientacion: "orientacion",
+    no_se_si_califico: "por_definir",
+    recursos_propios: "recursos_propios",
+  };
+
+  return creditTypes[value] || "";
+}
+
+function buildFinancingReadiness(state) {
+  const creditStatus = getCreditStatusValue(state);
+  const creditStatusLabel = getCreditStatusLabel(state);
+  const paymentMethod =
+    creditStatus === "recursos_propios"
+      ? "Recursos propios"
+      : getStateLabel(state, "comprar_pago") || creditStatusLabel;
+  const financingScore = FINANCING_SCORE[creditStatus] || 0;
+  const isPrequalified = [
+    "recursos_propios",
+    "credito_bancario_preaprobado",
+    "precalificacion_infonavit",
+    "precalificacion_fovissste",
+  ].includes(creditStatus);
+  const needsCreditGuidance = ["necesito_orientacion", "no_se_si_califico"].includes(creditStatus);
+  let advisorNote = "";
+
+  if (isPrequalified) {
+    advisorNote = "Revisar opciones y proponer llamada o cita.";
+  } else if (["simulacion_hecha", "tramite_iniciado"].includes(creditStatus)) {
+    advisorNote = "Validar capacidad y orientar antes de mostrar muchas opciones.";
+  } else if (needsCreditGuidance) {
+    advisorNote = "Orientar sobre crédito antes de proponer cita de propiedad.";
+  }
+
+  return {
+    paymentMethod,
+    creditStatus,
+    creditType: getCreditType(creditStatus),
+    creditStatusLabel,
+    isPrequalified,
+    needsCreditGuidance,
+    financingScore,
+    advisorNote,
+  };
 }
 
 function getPreferredContactScore(state) {
@@ -1272,6 +1553,7 @@ function hasHighRiskLand(state) {
     "comprar_terreno_situacion",
     "vender_terreno_situacion",
     "valuacion_terreno_situacion",
+    "terreno_situacion",
   ]);
   return (
     HIGH_RISK_LAND_STATUS.has(legalSituation) ||
@@ -1285,13 +1567,15 @@ function isLandIntake(state) {
     "comprar_terreno_superficie",
     "vender_terreno_superficie",
     "valuacion_terreno_superficie",
+    "terreno_superficie",
     "comprar_terreno_situacion",
     "vender_terreno_situacion",
     "valuacion_terreno_situacion",
+    "terreno_situacion",
   ]);
 }
 
-function calculateLeadScore(state) {
+function calculateLeadScore(state, leadQualityOverride = null) {
   let score = 0;
   const razonCalificacion = [];
   const addScore = (points, reason) => {
@@ -1306,6 +1590,7 @@ function calculateLeadScore(state) {
   const objectiveScore = OBJECTIVE_SCORE[objective] || 0;
   const timeScore = getTimeScore(state);
   const paymentScore = getPaymentScore(state);
+  const financingReadiness = buildFinancingReadiness(state);
   const contactPreferenceScore = getPreferredContactScore(state);
   const needsCount = getNeedsCount(state);
 
@@ -1318,6 +1603,12 @@ function calculateLeadScore(state) {
   }
 
   addScore(paymentScore.score, paymentScore.reason);
+  addScore(
+    financingReadiness.financingScore,
+    financingReadiness.creditStatusLabel
+      ? `Estado de crédito o capital: ${financingReadiness.creditStatusLabel}.`
+      : ""
+  );
 
   if (getPhoneDigits(getStateValue(state, "whatsapp")).length >= 10) {
     addScore(10, "WhatsApp válido para seguimiento.");
@@ -1359,11 +1650,25 @@ function calculateLeadScore(state) {
   }
 
   score = Math.min(score, 100);
-  const qualification = getTemperature(score);
+  const leadQuality = leadQualityOverride || classifyLeadQuality(state);
+  let qualification = getTemperature(score);
 
   if (objective === "vender" && wantsFastFollowUp(state)) {
     qualification.accionRecomendada =
       "Contactar cuanto antes y proponer llamada o visita de captación.";
+  }
+
+  if (["comprar", "invertir"].includes(objective) && financingReadiness.isPrequalified) {
+    qualification.accionRecomendada = "Revisar opciones y proponer llamada o cita.";
+  } else if (
+    ["comprar", "invertir"].includes(objective) &&
+    ["simulacion_hecha", "tramite_iniciado"].includes(financingReadiness.creditStatus)
+  ) {
+    qualification.accionRecomendada =
+      "Validar capacidad y orientar antes de mostrar muchas opciones.";
+  } else if (["comprar", "invertir"].includes(objective) && financingReadiness.needsCreditGuidance) {
+    qualification.accionRecomendada =
+      "Orientar sobre crédito antes de proponer cita de propiedad.";
   }
 
   if (objective === "vender" && getStateAnswer(state, "precio_requiere_validacion")?.value === true) {
@@ -1384,12 +1689,21 @@ function calculateLeadScore(state) {
     );
   }
 
+  if (!leadQuality.canBeHotLead) {
+    qualification = applyLeadQualityGuardrails(qualification, leadQuality);
+    addUnique(
+      razonCalificacion,
+      `Calidad de lead requiere revisión: ${leadQuality.label}. No generar alerta urgente.`
+    );
+  }
+
   return {
     score,
     temperatura: qualification.temperatura,
     urgencia: qualification.urgencia,
     accionRecomendada: qualification.accionRecomendada,
     etapaPipeline: qualification.etapaPipeline,
+    leadQuality: leadQuality.value,
     razonCalificacion,
   };
 }
@@ -1436,6 +1750,7 @@ function buildLandDetails(state) {
     "comprar_terreno_servicios",
     "vender_terreno_servicios",
     "valuacion_terreno_servicios",
+    "terreno_servicios",
   ]);
 
   return {
@@ -1443,16 +1758,19 @@ function buildLandDetails(state) {
       "comprar_terreno_superficie",
       "vender_terreno_superficie",
       "valuacion_terreno_superficie",
+      "terreno_superficie",
     ]),
     intendedUse: getFirstStateLabel(state, [
       "comprar_terreno_uso",
       "vender_terreno_uso",
       "valuacion_terreno_uso",
+      "terreno_uso",
     ]),
     legalSituation: getFirstStateLabel(state, [
       "comprar_terreno_situacion",
       "vender_terreno_situacion",
       "valuacion_terreno_situacion",
+      "terreno_situacion",
     ]),
     accessAndServices,
     generalLocation: getFirstStateLabel(state, LOCATION_FIELD_IDS),
@@ -1461,13 +1779,20 @@ function buildLandDetails(state) {
   };
 }
 
-function buildInternalReviewNotes(state) {
+function buildInternalReviewNotes(state, leadQualityOverride = null) {
   const objective = getStateValue(state, "objetivo");
+  const leadQuality = leadQualityOverride || classifyLeadQuality(state);
   const review = {
     riskLevel: "bajo",
     reviewStatus: "pendiente",
+    leadQuality: leadQuality.value,
+    leadQualityLabel: leadQuality.label,
+    leadQualityScore: leadQuality.score,
+    shouldTriggerUrgentAlert: leadQuality.shouldTriggerUrgentAlert,
+    canBeHotLead: leadQuality.canBeHotLead,
     legalFlags: [],
     commercialFlags: [],
+    qualityFlags: [],
     recommendedChecks: [],
     advisorNotes: [],
     nextAction: "",
@@ -1479,6 +1804,7 @@ function buildInternalReviewNotes(state) {
   const addCheck = (value) => addUnique(review.recommendedChecks, value);
   const addLegalFlag = (value) => addUnique(review.legalFlags, value);
   const addCommercialFlag = (value) => addUnique(review.commercialFlags, value);
+  const addQualityFlag = (value) => addUnique(review.qualityFlags, value);
   const addAdvisorNote = (value) => addUnique(review.advisorNotes, value);
   const documentationValue = getFirstStateValue(state, DOCUMENTATION_FIELD_IDS);
   const occupancyValue = getFirstStateValue(state, OCCUPANCY_FIELD_IDS);
@@ -1567,8 +1893,27 @@ function buildInternalReviewNotes(state) {
     addCheck("Revisión profesional recomendada antes de promover");
   }
 
-  if (review.riskLevel === "alto") {
+  if (leadQuality.value === LEAD_QUALITY.SUSPICIOUS) {
+    raiseRisk("medio");
+    addQualityFlag("Lead sospechoso");
+    leadQuality.reasons.forEach(addQualityFlag);
+    addCheck("Revisar señales de calidad antes de priorizar seguimiento");
+  }
+
+  if (leadQuality.value === LEAD_QUALITY.PROBABLE_BOT) {
+    raiseRisk("alto");
+    addQualityFlag("Probable bot");
+    leadQuality.reasons.forEach(addQualityFlag);
+    addCheck("No disparar alerta urgente");
+    addCheck("Validar manualmente antes de enviar a CRM o seguimiento prioritario");
+  }
+
+  if (!leadQuality.shouldTriggerUrgentAlert) {
+    review.nextAction = "Revisar calidad del lead antes de priorizar seguimiento.";
+  } else if (review.riskLevel === "alto") {
     review.nextAction = "Validar documentación y situación jurídica antes de promover.";
+  } else if (objective === "terreno") {
+    review.nextAction = "Contactar para ordenar situación del terreno y definir revisión necesaria.";
   } else if (["vender", "poner_renta", "valuacion"].includes(objective)) {
     review.nextAction = "Contactar para validar estrategia de captación o valoración.";
   } else {
@@ -1599,9 +1944,14 @@ function buildRouteResponses(state, route) {
 }
 
 function buildPropertyIntake(state, qualification) {
+  const objective = getStateValue(state, "objetivo");
+  const financingReadiness = buildFinancingReadiness(state);
+
   return {
-    operation: getStateValue(state, "objetivo"),
-    propertyType: getFirstStateLabel(state, PROPERTY_TYPE_FIELD_IDS),
+    operation: objective,
+    propertyType:
+      getFirstStateLabel(state, PROPERTY_TYPE_FIELD_IDS) ||
+      (objective === "terreno" ? "Terreno" : ""),
     generalLocation: getFirstStateLabel(state, LOCATION_FIELD_IDS),
     approximateSize: getFirstStateLabel(state, SIZE_FIELD_IDS),
     condition: getFirstStateLabel(state, CONDITION_FIELD_IDS),
@@ -1612,26 +1962,203 @@ function buildPropertyIntake(state, qualification) {
     urgency: getFirstStateLabel(state, TIME_FIELD_IDS),
     motivation: getFirstStateLabel(state, MOTIVATION_FIELD_IDS),
     wantsListingAppointment: getFirstStateLabel(state, CONTACT_PREFERENCE_FIELDS),
+    financingReadiness,
     feasibilityScore: qualification.score,
     feasibilityLevel: qualification.temperatura,
     recommendedListingAction: qualification.accionRecomendada,
   };
 }
 
+function getIntentOperationType(objective) {
+  const operationTypes = {
+    comprar: "compra",
+    vender: "venta",
+    rentar: "renta",
+    poner_renta: "captacion_renta",
+    valuacion: "valuacion",
+    invertir: "inversion",
+    terreno: "terreno",
+    orientacion: "orientacion",
+  };
+
+  return operationTypes[objective] || "";
+}
+
+function buildIntentPayload(state, route) {
+  const objective = getStateValue(state, "objetivo");
+
+  return {
+    objetivo: objective,
+    ruta: route,
+    etapa: getStateValue(state, "etapa"),
+    prioridad: getStateValue(state, "prioridad"),
+    tipoOperacion: getIntentOperationType(objective),
+  };
+}
+
+function buildQualificationPayload(qualification) {
+  return {
+    score: qualification.score,
+    temperatura: qualification.temperatura,
+    urgencia: qualification.urgencia,
+    etapaPipeline: qualification.etapaPipeline,
+    accionRecomendada: qualification.accionRecomendada,
+    razonesScore: qualification.razonCalificacion || [],
+  };
+}
+
+function getRecommendedQualityHandling(leadQuality) {
+  const handling = {
+    useful: "Priorizar seguimiento comercial normal.",
+    curious: "Dar seguimiento suave y orientar sin presión.",
+    suspicious: "Revisar manualmente antes de priorizar o generar alertas.",
+    probable_bot: "No priorizar. Validar manualmente antes de cualquier acción comercial.",
+  };
+
+  return handling[leadQuality.value] || "Revisar calidad del lead antes de seguimiento.";
+}
+
+function getQualityFlags(leadQuality, internalReview) {
+  return [
+    ...(Array.isArray(internalReview?.qualityFlags) ? internalReview.qualityFlags : []),
+    ...(Array.isArray(leadQuality?.reasons) ? leadQuality.reasons : []),
+  ].reduce((flags, flag) => {
+    addUnique(flags, flag);
+    return flags;
+  }, []);
+}
+
+function buildLeadQualityPayload(leadQuality, internalReview) {
+  const shouldNotifyAdvisor =
+    leadQuality.value === LEAD_QUALITY.USEFUL && Boolean(leadQuality.shouldTriggerUrgentAlert);
+
+  return {
+    calidadLead: leadQuality.value,
+    qualityStatus: leadQuality.value,
+    botRiskScore: Math.max(0, 100 - Number(leadQuality.score || 0)),
+    qualityFlags: getQualityFlags(leadQuality, internalReview),
+    shouldNotifyAdvisor,
+    shouldSendToCRM: true,
+    recommendedHandling: getRecommendedQualityHandling(leadQuality),
+  };
+}
+
+function buildPropertyContext(state) {
+  return {
+    tipoPropiedad:
+      getFirstStateLabel(state, PROPERTY_TYPE_FIELD_IDS) ||
+      (getStateValue(state, "objetivo") === "terreno" ? "Terreno" : ""),
+    zonaGeneral: getFirstStateLabel(state, LOCATION_FIELD_IDS),
+    ciudad: getStateLabel(state, "ciudad"),
+    presupuesto: getFirstStateLabel(state, [
+      "comprar_presupuesto",
+      "rentar_presupuesto",
+      "invertir_monto",
+    ]),
+    precioEnMente: getFirstStateLabel(state, ["vender_precio", "valuacion_precio"]),
+    rentaEstimada: getStateLabel(state, "poner_renta_precio"),
+    documentacionDeclarada: getMultiAnswerLabels(state, DOCUMENTATION_FIELD_IDS),
+    estadoPropiedad: getFirstStateLabel(state, CONDITION_FIELD_IDS),
+    ocupacion: getFirstStateLabel(state, OCCUPANCY_FIELD_IDS),
+    necesidadesTop3: getMultiAnswerLabels(state, NEED_FIELD_IDS).slice(0, MAX_MULTI_SELECT),
+  };
+}
+
+function buildInternalNotesPayload(internalReview, qualification, financingReadiness) {
+  return {
+    notasComerciales: [
+      ...(internalReview.commercialFlags || []),
+      ...(internalReview.advisorNotes || []),
+      ...(financingReadiness.advisorNote ? [financingReadiness.advisorNote] : []),
+    ],
+    notasLegales: internalReview.legalFlags || [],
+    puntosARevisar: internalReview.recommendedChecks || [],
+    siguientePasoRecomendado: qualification.accionRecomendada || internalReview.nextAction || "",
+  };
+}
+
+function getCrmEndpoint() {
+  const endpoint = sanitizeText(CRM_CONFIG.endpoint, 500);
+
+  if (!endpoint || !/^https:\/\//i.test(endpoint)) {
+    return "";
+  }
+
+  return endpoint;
+}
+
+function isCrmEndpointConfigured() {
+  return Boolean(getCrmEndpoint());
+}
+
+function isCrmReadyToSubmit() {
+  return Boolean(CRM_CONFIG.enabled && isCrmEndpointConfigured());
+}
+
+function buildCrmPayloadStatus(status = CRM_DISABLED_MODE, submittedAt = "") {
+  return {
+    submitAttempted: status !== CRM_DISABLED_MODE,
+    submitStatus: status,
+    submittedAt,
+    crmMode: CRM_CONFIG.mode,
+    crmEndpointConfigured: isCrmEndpointConfigured(),
+  };
+}
+
+function setLeadCrmStatus(leadPayload, status, submittedAt = "") {
+  if (!leadPayload) {
+    return;
+  }
+
+  leadPayload.crm = buildCrmPayloadStatus(status, submittedAt);
+}
+
+function validateLeadPayloadForCrm(leadPayload) {
+  const contact = leadPayload?.contact || {};
+  const objective = leadPayload?.intent?.objetivo;
+
+  if (!leadPayload?.consent?.acceptedPrivacy) {
+    return { valid: false, reason: "missing_consent" };
+  }
+
+  if (!sanitizeText(contact.nombre, 80)) {
+    return { valid: false, reason: "missing_name" };
+  }
+
+  if (getPhoneDigits(contact.whatsapp).length < 10) {
+    return { valid: false, reason: "invalid_whatsapp" };
+  }
+
+  if (!sanitizeText(objective, 80)) {
+    return { valid: false, reason: "missing_objective" };
+  }
+
+  if (leadPayload?.leadQuality?.shouldSendToCRM !== true) {
+    return { valid: false, reason: "lead_quality_filtered" };
+  }
+
+  return { valid: true, reason: "" };
+}
+
 function buildLeadPayload(state) {
   const createdAt = new Date().toISOString();
   const route = getStateValue(state, "objetivo");
-  const qualification = calculateLeadScore(state);
+  const leadQuality = classifyLeadQuality(state);
+  const qualification = calculateLeadScore(state, leadQuality);
   const priceMindset = buildPriceMindset(state);
   const rentMindset = buildRentMindset(state);
-  const internalReview = buildInternalReviewNotes(state);
+  const financingReadiness = buildFinancingReadiness(state);
+  const internalReview = buildInternalReviewNotes(state, leadQuality);
+  const shortMessage = buildWhatsappMessage(state);
+  const whatsappUrl = buildWhatsappUrl(shortMessage);
+  const acceptedPrivacy = getStateAnswer(state, "consentimiento")?.value === true;
+  const routeResponses = buildRouteResponses(state, route);
 
   return {
     leadId: generateLeadId(),
     createdAt,
     source: "landing-ehecatl-milian",
     pageUrl: sanitizeText(window.location.href, 500),
-    utm: getUtmParams(),
     contact: {
       nombre: getStateLabel(state, "nombre"),
       whatsapp: getStateValue(state, "whatsapp"),
@@ -1640,12 +2167,36 @@ function buildLeadPayload(state) {
       medioPreferido: getStateLabel(state, "medio_contacto"),
       horarioPreferido: getStateLabel(state, "horario_contacto"),
     },
+    intent: buildIntentPayload(state, route),
+    qualification: buildQualificationPayload(qualification),
+    leadQuality: buildLeadQualityPayload(leadQuality, internalReview),
+    financingReadiness,
+    propertyContext: buildPropertyContext(state),
+    internalNotes: buildInternalNotesPayload(internalReview, qualification, financingReadiness),
+    utm: getUtmParams(),
+    metrics: {
+      sessionId,
+      formStartedAt: formStartedAt ? new Date(formStartedAt).toISOString() : "",
+      formCompletedAt: createdAt,
+      timeToCompleteSeconds: getElapsedFormSeconds() ? String(getElapsedFormSeconds()) : "",
+      lastStepViewed,
+      lastStepCompleted,
+    },
+    consent: {
+      acceptedPrivacy,
+      privacyAcceptedAt: acceptedPrivacy ? createdAt : "",
+    },
+    whatsapp: {
+      shortMessage,
+      whatsappUrl,
+    },
+    crm: buildCrmPayloadStatus(),
     answers: {
       objetivo: getStateValue(state, "objetivo"),
       etapa: getStateValue(state, "etapa"),
       prioridad: getStateValue(state, "prioridad"),
       ruta: route,
-      respuestasRuta: buildRouteResponses(state, route),
+      respuestasRuta: routeResponses,
     },
     preferences: {
       topNeeds: getMultiAnswerLabels(state, NEED_FIELD_IDS),
@@ -1655,56 +2206,68 @@ function buildLeadPayload(state) {
     priceMindset,
     rentMindset,
     landDetails: buildLandDetails(state),
-    qualification,
+    qualificationLegacy: qualification,
+    leadQualityRaw: leadQuality,
     internalReview,
     recommendedProperties: getRecommendedProperties(state, loadedProperties).map(
       getLeadPropertySummary
     ),
-    metrics: {
-      sessionId,
+    legacyMetrics: {
       firstPageUrl: sanitizeText(firstPageUrl, 500),
       referrer: sanitizeText(document.referrer || "", 500),
-      formStartedAt: formStartedAt ? new Date(formStartedAt).toISOString() : "",
-      formCompletedAt: createdAt,
-      timeToCompleteSeconds: formStartedAt
-        ? String(Math.max(0, Math.round((Date.now() - formStartedAt) / 1000)))
-        : "",
     },
-    consent: {
-      acceptedPrivacy: getStateAnswer(state, "consentimiento")?.value === true,
-      privacyText: PRIVACY_CONSENT_TEXT,
-    },
-    shortWhatsAppMessage: buildWhatsappMessage(state),
+    shortWhatsAppMessage: shortMessage,
   };
 }
 
-function submitLead(leadPayload) {
-  const contact = leadPayload?.contact || {};
-  const hasValidPhone = getPhoneDigits(contact.whatsapp).length >= 10;
+async function submitLead(leadPayload) {
+  const validation = validateLeadPayloadForCrm(leadPayload);
 
-  if (!leadPayload?.consent?.acceptedPrivacy) {
-    return { ok: false, mode: CRM_DISABLED_MODE, reason: "missing_consent" };
+  if (!validation.valid) {
+    setLeadCrmStatus(leadPayload, "failed");
+    return { ok: false, mode: "failed", reason: validation.reason };
   }
 
-  if (!sanitizeText(contact.nombre, 80)) {
-    return { ok: false, mode: CRM_DISABLED_MODE, reason: "missing_name" };
+  if (!isCrmReadyToSubmit()) {
+    setLeadCrmStatus(leadPayload, CRM_DISABLED_MODE);
+    return { ok: true, mode: CRM_DISABLED_MODE };
   }
 
-  if (!hasValidPhone) {
-    return { ok: false, mode: CRM_DISABLED_MODE, reason: "invalid_whatsapp" };
-  }
+  const submittedAt = new Date().toISOString();
+  setLeadCrmStatus(leadPayload, "submitted", submittedAt);
 
-  if (!sanitizeText(contact.ciudad, 100)) {
-    return { ok: false, mode: CRM_DISABLED_MODE, reason: "missing_city" };
-  }
+  try {
+    const response = await fetch(getCrmEndpoint(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(leadPayload),
+      keepalive: true,
+    });
 
-  return { ok: true, mode: CRM_DISABLED_MODE };
+    if (!response.ok) {
+      setLeadCrmStatus(leadPayload, "failed");
+      return { ok: false, mode: "failed" };
+    }
+
+    return { ok: true, mode: "submitted" };
+  } catch (error) {
+    setLeadCrmStatus(leadPayload, "failed");
+    return { ok: false, mode: "failed" };
+  }
 }
 
-function prepareLeadPayload() {
+async function prepareLeadPayload() {
   currentLeadPayload = buildLeadPayload(answers);
-  currentLeadSubmission = submitLead(currentLeadPayload);
-  return currentLeadSubmission.ok;
+  const validation = validateLeadPayloadForCrm(currentLeadPayload);
+
+  if (!validation.valid) {
+    currentLeadSubmission = { ok: false, mode: "failed", reason: validation.reason };
+    setLeadCrmStatus(currentLeadPayload, "failed");
+    return false;
+  }
+
+  currentLeadSubmission = await submitLead(currentLeadPayload);
+  return true;
 }
 
 function normalizeInventoryText(value) {
@@ -2236,6 +2799,7 @@ function renderQuestion({ shouldScroll = false, shouldFocus = false } = {}) {
 
   finishScreen.hidden = true;
   form.hidden = false;
+  lastStepViewed = question.id;
   formError.hidden = true;
   formError.textContent = "";
   nextButton.textContent =
@@ -2422,11 +2986,7 @@ function renderCheckbox(question, saved) {
   input.checked = checked;
 
   if (question.id === "consentimiento") {
-    text.append(
-      document.createTextNode(
-        "Acepto que Erick Ehecatl Carro Milian, asesor inmobiliario vinculado con Century 21 Edyfico, me contacte por los medios proporcionados para dar seguimiento a mi solicitud inmobiliaria. He leído y acepto el "
-      )
-    );
+    text.append(document.createTextNode("He leído y acepto el "));
     const link = document.createElement("a");
     link.href = "aviso-privacidad.html";
     link.target = "_blank";
@@ -2465,7 +3025,15 @@ function scrollToCurrentQuestion() {
   }
 
   window.requestAnimationFrame(() => {
-    form.scrollIntoView({ behavior: "smooth", block: "start" });
+    const headerOffset = document.querySelector(".site-header")?.offsetHeight || 0;
+    const targetTop =
+      questionMount.getBoundingClientRect().top + window.scrollY - headerOffset - 16;
+
+    window.scrollTo({
+      top: Math.max(0, targetTop),
+      left: 0,
+      behavior: "smooth",
+    });
   });
 }
 
@@ -2542,10 +3110,11 @@ function validateSafeText(value, question) {
   }
 
   if (question.id === "nombre") {
-    if (!isValidName(cleaned)) {
+    const nameError = getNameValidationError(cleaned);
+    if (nameError) {
       return {
         isValid: false,
-        message: "Escribe tu nombre sin números ni símbolos especiales.",
+        message: nameError,
       };
     }
   }
@@ -2729,12 +3298,12 @@ function validateFieldAndStore(question) {
 
   if (question.inputType === "tel") {
     if (!isValidPhone(rawValue)) {
-      showError("Escribe un WhatsApp válido, solo con números, espacios o guiones.");
+      showError("Escribe tu WhatsApp únicamente con números, de 10 a 15 dígitos.");
       field.focus();
       return false;
     }
 
-    const digits = getPhoneDigits(rawValue);
+    const digits = normalizePhone(rawValue);
     answers[question.id] = {
       value: digits,
       label: digits,
@@ -2864,7 +3433,7 @@ function clearRouteAnswers() {
   currentLeadSubmission = null;
 }
 
-function showFinish() {
+async function showFinish() {
   const firstMissingIndex = getFirstMissingRequiredIndex();
   if (firstMissingIndex >= 0) {
     currentIndex = firstMissingIndex;
@@ -2873,7 +3442,7 @@ function showFinish() {
     return;
   }
 
-  if (!prepareLeadPayload()) {
+  if (!(await prepareLeadPayload())) {
     currentIndex = Math.max(0, getFlow().length - 1);
     renderQuestion({ shouldScroll: true, shouldFocus: true });
     showError("Revisa tus datos de contacto y consentimiento antes de continuar.");
@@ -2917,6 +3486,7 @@ function buildWhatsappMessage(state = answers) {
     rentar: `Hola Ehecatl, soy ${name}. Acabo de responder tu asesoría y me gustaría revisar opciones de renta.`,
     invertir: `Hola Ehecatl, soy ${name}. Acabo de responder tu asesoría y me gustaría revisar alternativas de inversión inmobiliaria.`,
     valuacion: `Hola Ehecatl, soy ${name}. Acabo de responder el diagnóstico de mi propiedad y me gustaría revisar su valor aproximado.`,
+    terreno: `Hola Ehecatl, soy ${name}. Acabo de responder tu asesoría sobre un terreno y me gustaría que me ayudes a ordenar el caso.`,
     orientacion: `Hola Ehecatl, soy ${name}. Acabo de responder tu asesoría y me gustaría que me ayudes a ordenar mi caso.`,
   };
 
@@ -2936,7 +3506,7 @@ function openQuickWhatsapp() {
   );
 }
 
-form.addEventListener("submit", (event) => {
+form.addEventListener("submit", async (event) => {
   event.preventDefault();
   hasUserInteracted = true;
   markFormStarted();
@@ -2947,10 +3517,11 @@ form.addEventListener("submit", (event) => {
     return;
   }
 
+  lastStepCompleted = question.id;
   currentIndex += 1;
 
   if (currentIndex >= getFlow().length) {
-    showFinish();
+    await showFinish();
     return;
   }
 
@@ -2966,14 +3537,14 @@ backButton.addEventListener("click", () => {
   renderQuestion({ shouldScroll: true, shouldFocus: true });
 });
 
-sendWhatsappButton.addEventListener("click", () => {
+sendWhatsappButton.addEventListener("click", async () => {
   hasUserInteracted = true;
   const now = Date.now();
   if (now < whatsappUnlockAt || !canSubmit()) {
     return;
   }
 
-  if (!currentLeadPayload && !prepareLeadPayload()) {
+  if (!currentLeadPayload && !(await prepareLeadPayload())) {
     showError("Revisa tus datos de contacto y consentimiento antes de abrir WhatsApp.");
     return;
   }
