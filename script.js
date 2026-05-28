@@ -201,16 +201,10 @@ const baseQuestions = [
     autocomplete: "given-name",
   },
   {
-    id: "saludo_inicial",
-    type: "message",
-    kicker: "Gracias",
-    title: "Hola, un gusto saludarte. No te quito mucho tiempo; dime, ¿en qué te puedo apoyar hoy?",
-  },
-  {
     id: "objetivo",
     type: "choice",
     kicker: "Primer paso",
-    title: "¿Qué te gustaría resolver hoy?",
+    title: "Hola, un gusto saludarte. No te quito mucho tiempo; dime, ¿en qué te puedo apoyar hoy?",
     summaryTitle: "¿Qué te gustaría resolver hoy?",
     help:
       "Elige lo que más se acerque a tu situación. A partir de eso solo te preguntaré lo necesario.",
@@ -693,6 +687,7 @@ const finishMessage = document.querySelector("#finishMessage");
 const sendWhatsappButton = document.querySelector("#sendWhatsappButton");
 const suggestedPropertiesSection = document.querySelector("#suggestedPropertiesSection");
 const suggestedPropertyGrid = document.querySelector("#suggestedPropertyGrid");
+const inventorySection = document.querySelector("#inventario");
 const propertyGrid = document.querySelector("#propertyGrid");
 const inventoryEmpty = document.querySelector("#inventoryEmpty");
 const inventoryDisclaimer = document.querySelector("#inventoryDisclaimer");
@@ -3779,6 +3774,12 @@ function renderQuestion({ shouldScroll = false, shouldFocus = false } = {}) {
   }
 
   finishScreen.hidden = true;
+  if (suggestedPropertiesSection) {
+    suggestedPropertiesSection.hidden = true;
+  }
+  if (inventorySection) {
+    inventorySection.hidden = true;
+  }
   form.hidden = false;
   lastStepViewed = question.id;
   formError.hidden = true;
@@ -4550,6 +4551,9 @@ async function showFinish() {
   trackFormCompleted(getCurrentRoute());
   form.hidden = true;
   finishScreen.hidden = false;
+  if (inventorySection) {
+    inventorySection.hidden = suggestedProperties.length > 0;
+  }
   finishTitle.textContent = `Gracias, ${getFirstName()}. Ya tengo una idea más clara de lo que necesitas.`;
   finishMessage.textContent = FINISH_DEFAULT_MESSAGE;
   progressBar.style.width = "100%";
