@@ -204,9 +204,7 @@ const baseQuestions = [
     id: "saludo_inicial",
     type: "message",
     kicker: "Gracias",
-    title: ({ name }) => `Hola, ${name}. No te quito mucho tiempo.`,
-    help:
-      "Solo te haré unas preguntas rápidas para entender mejor cómo puedo ayudarte.",
+    title: "Hola, un gusto saludarte. No te quito mucho tiempo; dime, ¿en qué te puedo apoyar hoy?",
   },
   {
     id: "objetivo",
@@ -327,6 +325,7 @@ const routeQuestions = {
       help: "Tener un precio en mente es un buen inicio, pero conviene validarlo con mercado para evitar que la propiedad se estanque o se castigue su valor.",
       fields: [
         { id: "vender_precio", type: "choice", label: "Precio en mente", required: true, options: [["si", "Sí, ya tengo un precio"], ["aproximado", "Tengo una idea aproximada"], ["necesito_valuacion", "Necesito una opinión de valor"], ["quiero_validarlo", "Quiero validar si es competitivo"]] },
+        { id: "vender_precio_esperado_raw", type: "text", label: "¿Qué precio tienes en mente?", help: "Puede ser aproximado. Ejemplo: 2.3 MDP, 2300000 o 'alrededor de dos millones'. Si aún no lo tienes claro, puedes dejarlo en blanco.", placeholder: "Ej. 2.3 MDP, 2300000 o alrededor de dos millones", required: false },
         { id: "vender_precio_base", type: "choice", label: "¿Cómo definiste ese precio?", required: true, options: PRICE_BASIS_OPTIONS },
       ],
     },
@@ -380,13 +379,15 @@ const routeQuestions = {
       options: [["mascotas", "Acepta mascotas"], ["estacionamiento", "Estacionamiento"], ["amueblado", "Amueblado"], ["seguridad", "Seguridad"], ["cerca_trabajo", "Cercanía a trabajo/escuela"], ["facturacion", "Facturación"], ["amenidades", "Amenidades"], ["precio", "Precio cómodo"]],
     },
     {
-      id: "rentar_giro_local",
-      type: "choice",
+      id: "rentar_giro_local_pantalla",
+      type: "group",
       kicker: "Giro",
       title: "¿Qué giro tendrá el local?",
-      required: true,
       showIf: { id: "rentar_tipo", values: ["local_oficina"] },
-      options: [["oficina", "Oficina"], ["consultorio", "Consultorio"], ["comercio", "Comercio"], ["restaurante_cafeteria", "Restaurante / cafetería"], ["servicios", "Servicios"], ["otro", "Otro"]],
+      fields: [
+        { id: "rentar_giro_local", type: "choice", label: "Giro principal", required: true, options: [["oficina", "Oficina"], ["consultorio", "Consultorio"], ["comercio", "Comercio"], ["restaurante_cafeteria", "Restaurante / cafetería"], ["servicios", "Servicios"], ["otro", "Otro"]] },
+        { id: "rentar_giro_evitar_raw", type: "text", label: "¿Hay algún giro que prefieras evitar?", help: "Si no tienes ninguno en mente, déjalo en blanco.", placeholder: "Ej. restaurante, bar, talleres, ninguno", required: false },
+      ],
     },
   ],
   poner_renta: [
@@ -419,6 +420,7 @@ const routeQuestions = {
       help: "Tener una renta estimada ayuda, pero conviene validarla con mercado, zona, estado del inmueble y perfil del inquilino.",
       fields: [
         { id: "poner_renta_precio", type: "choice", label: "Renta estimada", required: true, options: [["si", "Sí, ya tengo una renta estimada"], ["aproximada", "Tengo una idea aproximada"], ["no", "No, necesito estimarla"], ["quiero_validar", "Quiero validar el precio"]] },
+        { id: "poner_renta_renta_esperada_raw", type: "text", label: "¿Qué renta tienes en mente?", help: "Puede ser aproximada. Ejemplo: 12,000, 15 mil o 'entre 10 y 12'. Si aún no lo tienes claro, puedes dejarlo en blanco.", placeholder: "Ej. 12,000, 15 mil o entre 10 y 12", required: false },
         { id: "poner_renta_precio_base", type: "choice", label: "¿Cómo definiste esa renta?", required: true, options: PRICE_BASIS_OPTIONS },
       ],
     },
@@ -878,7 +880,7 @@ const ANALYTICS_CONFIG = {
   // https://hook.us2.make.com/xymi395w1ukif2tvfh244387fyc1xf37
   mode: "local",
 };
-const ANALYTICS_STORAGE_KEY = "perfilador_emc21_analytics_summary";
+const ANALYTICS_STORAGE_KEY = "perfilador_emc21_analytics_summary_launch_2026_05_28";
 const allRouteQuestionIds = [
   ...new Set([
     ...Object.values(routeQuestions).flatMap((route) => route.flatMap(getQuestionIds)),
@@ -1293,7 +1295,14 @@ function exportAnalyticsSummary() {
   return readAnalyticsSummary();
 }
 
+function resetAnalyticsSummary() {
+  const summary = getEmptyAnalyticsSummary();
+  writeAnalyticsSummary(summary);
+  return summary;
+}
+
 window.exportAnalyticsSummary = exportAnalyticsSummary;
+window.resetAnalyticsSummary = resetAnalyticsSummary;
 
 function getDeviceType() {
   const width = window.innerWidth || document.documentElement.clientWidth || 0;
@@ -2520,10 +2529,21 @@ function buildPropertyContext(state) {
     ]),
     precioEnMente: getFirstStateLabel(state, ["vender_precio", "valuacion_precio"]),
     rentaEstimada: getStateLabel(state, "poner_renta_precio"),
+    sellerExpectedPriceRaw: sanitizeText(getStateValue(state, "vender_precio_esperado_raw"), 160),
+    rentalExpectedPriceRaw: sanitizeText(getStateValue(state, "poner_renta_renta_esperada_raw"), 160),
+    excludedBusinessTypeRaw: sanitizeText(getStateValue(state, "rentar_giro_evitar_raw"), 160),
     documentacionDeclarada: getMultiAnswerLabels(state, DOCUMENTATION_FIELD_IDS),
     estadoPropiedad: getFirstStateLabel(state, CONDITION_FIELD_IDS),
     ocupacion: getFirstStateLabel(state, OCCUPANCY_FIELD_IDS),
     necesidadesTop3: getMultiAnswerLabels(state, NEED_FIELD_IDS).slice(0, MAX_MULTI_SELECT),
+  };
+}
+
+function buildObjectiveDetailsPayload(state) {
+  return {
+    expectedPriceRaw: sanitizeText(getStateValue(state, "vender_precio_esperado_raw"), 160),
+    expectedRentRaw: sanitizeText(getStateValue(state, "poner_renta_renta_esperada_raw"), 160),
+    excludedBusinessTypeRaw: sanitizeText(getStateValue(state, "rentar_giro_evitar_raw"), 160),
   };
 }
 
@@ -2592,19 +2612,28 @@ function valueOrNotSpecified(value, maxLength = 160) {
   return sanitizeText(value, maxLength) || "No especificado";
 }
 
-function buildTelegramPayload(crmPayload) {
+function buildTelegramMessage(crmPayload) {
   const nombre = valueOrNotSpecified(crmPayload.contact?.nombre, 80);
   const whatsapp = valueOrNotSpecified(crmPayload.contact?.whatsapp, 40);
-  const objetivo = valueOrNotSpecified(crmPayload.intent?.objetivo, 80);
+  const objetivo = valueOrNotSpecified(
+    crmPayload.intent?.tipoOperacion || crmPayload.intent?.objetivo,
+    80
+  );
   const urgencia = valueOrNotSpecified(crmPayload.qualification?.urgencia, 120);
   const temperatura = valueOrNotSpecified(crmPayload.qualification?.temperatura, 120);
   const calidadLead = valueOrNotSpecified(crmPayload.leadQuality?.calidadLead, 120);
-  const accionSugerida = valueOrNotSpecified(
+  const propiedadSugerida = valueOrNotSpecified(
+    crmPayload.suggestedProperty?.title || "Sin propiedad sugerida",
+    180
+  );
+  const recommendedHandling = valueOrNotSpecified(crmPayload.leadQuality?.recommendedHandling, 300);
+  const siguientePaso = valueOrNotSpecified(
     crmPayload.internalNotes?.siguientePasoRecomendado ||
       crmPayload.qualification?.accionRecomendada,
     300
   );
-  const message = [
+
+  return [
     "🔥 Nuevo lead inmobiliario",
     "",
     `👤 Nombre: ${nombre}`,
@@ -2614,29 +2643,15 @@ function buildTelegramPayload(crmPayload) {
     `🌡️ Temperatura: ${temperatura}`,
     `🧪 Calidad: ${calidadLead}`,
     "",
-    "✅ Acción sugerida:",
-    accionSugerida,
+    "🏷️ Propiedad sugerida:",
+    propiedadSugerida,
+    "",
+    "📌 Proceso:",
+    recommendedHandling,
+    "",
+    "✅ Siguiente paso:",
+    siguientePaso,
   ].join("\n");
-
-  return {
-    shouldSend: crmPayload.leadQuality?.shouldNotifyAdvisor === true,
-    should_send: crmPayload.leadQuality?.shouldNotifyAdvisor === true,
-    notificationType: "new_lead_full",
-    notification_type: "new_lead_full",
-    messageCount: 1,
-    message_count: 1,
-    message,
-    nombre,
-    whatsapp,
-    objetivo,
-    urgencia,
-    temperatura,
-    calidadLead,
-    calidad_lead: calidadLead,
-    accionSugerida,
-    accion_sugerida: accionSugerida,
-    siguiente_paso_recomendado: accionSugerida,
-  };
 }
 
 function buildMakeLeadPayload(leadPayload) {
@@ -2644,9 +2659,11 @@ function buildMakeLeadPayload(leadPayload) {
   const intent = leadPayload?.intent || {};
   const qualification = leadPayload?.qualification || {};
   const propertyContext = leadPayload?.propertyContext || {};
+  const objectiveDetails = leadPayload?.objectiveDetails || {};
   const financingReadiness = leadPayload?.financingReadiness || {};
   const leadQuality = leadPayload?.leadQuality || {};
   const internalNotes = leadPayload?.internalNotes || {};
+  const suggestedProperty = leadPayload?.suggestedProperty || {};
   const submittedAt = leadPayload?.submittedAt || new Date().toISOString();
   const acceptedPrivacy =
     leadPayload?.consent?.acceptedPrivacy === true || leadPayload?.privacy?.accepted === true;
@@ -2667,6 +2684,7 @@ function buildMakeLeadPayload(leadPayload) {
     intent: {
       objetivo: sanitizeText(intent.objetivo, 80),
       ruta: sanitizeText(intent.ruta, 80),
+      tipoOperacion: sanitizeText(intent.tipoOperacion || intent.objetivo, 80),
     },
     qualification: {
       score: Number(qualification.score || 0),
@@ -2681,7 +2699,15 @@ function buildMakeLeadPayload(leadPayload) {
       presupuesto: sanitizeText(propertyContext.presupuesto, 120),
       precioEnMente: sanitizeText(propertyContext.precioEnMente, 120),
       rentaEstimada: sanitizeText(propertyContext.rentaEstimada, 120),
+      sellerExpectedPriceRaw: sanitizeText(propertyContext.sellerExpectedPriceRaw, 160),
+      rentalExpectedPriceRaw: sanitizeText(propertyContext.rentalExpectedPriceRaw, 160),
+      excludedBusinessTypeRaw: sanitizeText(propertyContext.excludedBusinessTypeRaw, 160),
       necesidadesTop3: listToCrmText(propertyContext.necesidadesTop3),
+    },
+    objectiveDetails: {
+      expectedPriceRaw: sanitizeText(objectiveDetails.expectedPriceRaw, 160),
+      expectedRentRaw: sanitizeText(objectiveDetails.expectedRentRaw, 160),
+      excludedBusinessTypeRaw: sanitizeText(objectiveDetails.excludedBusinessTypeRaw, 160),
     },
     financingReadiness: {
       creditStatus: sanitizeText(financingReadiness.creditStatus, 120),
@@ -2693,6 +2719,7 @@ function buildMakeLeadPayload(leadPayload) {
       botRiskScore: Number(leadQuality.botRiskScore || 0),
       shouldNotifyAdvisor: Boolean(leadQuality.shouldNotifyAdvisor),
       shouldSendToCRM: leadQuality.shouldSendToCRM === true,
+      recommendedHandling: sanitizeText(leadQuality.recommendedHandling, 300),
     },
     internalNotes: {
       notasComerciales: listToCrmText(internalNotes.notasComerciales),
@@ -2700,16 +2727,14 @@ function buildMakeLeadPayload(leadPayload) {
       puntosARevisar: listToCrmText(internalNotes.puntosARevisar),
       siguientePasoRecomendado: sanitizeText(internalNotes.siguientePasoRecomendado, 300),
     },
+    suggestedProperty: buildSuggestedPropertyPayload(suggestedProperty),
     privacyAccepted: acceptedPrivacy,
     utm: leadPayload?.utm || getUtmParams(),
   };
-  const telegram = buildTelegramPayload(crmPayload);
 
   return {
-    telegramMessage: telegram.message,
-    telegram_message: telegram.message,
     ...crmPayload,
-    telegram,
+    telegramMessage: buildTelegramMessage(crmPayload),
   };
 }
 
@@ -2718,10 +2743,10 @@ function ensureTelegramMessage(crmPayload) {
     return null;
   }
 
-  const telegram = crmPayload.telegram || buildTelegramPayload(crmPayload);
-  crmPayload.telegram = telegram;
-  crmPayload.telegramMessage = telegram.message;
-  crmPayload.telegram_message = telegram.message;
+  delete crmPayload.telegram;
+  delete crmPayload.telegram_message;
+  delete crmPayload.message;
+  crmPayload.telegramMessage = buildTelegramMessage(crmPayload);
   return crmPayload;
 }
 
@@ -2772,6 +2797,7 @@ function buildLeadPayload(state) {
   const whatsappUrl = buildWhatsappUrl(shortMessage);
   const acceptedPrivacy = getStateAnswer(state, "consentimiento")?.value === true;
   const routeResponses = buildRouteResponses(state, route);
+  const recommendedProperties = getRecommendedProperties(state, loadedProperties);
 
   return {
     leadId: generateLeadId(),
@@ -2792,6 +2818,7 @@ function buildLeadPayload(state) {
     leadQuality: buildLeadQualityPayload(leadQuality, internalReview),
     financingReadiness,
     propertyContext: buildPropertyContext(state),
+    objectiveDetails: buildObjectiveDetailsPayload(state),
     internalNotes: buildInternalNotesPayload(internalReview, qualification, financingReadiness),
     utm: getUtmParams(),
     metrics: {
@@ -2833,9 +2860,8 @@ function buildLeadPayload(state) {
     qualificationLegacy: qualification,
     leadQualityRaw: leadQuality,
     internalReview,
-    recommendedProperties: getRecommendedProperties(state, loadedProperties).map(
-      getLeadPropertySummary
-    ),
+    recommendedProperties: recommendedProperties.map(getLeadPropertySummary),
+    suggestedProperty: buildSuggestedPropertyPayload(recommendedProperties[0]),
     legacyMetrics: {
       firstPageUrl: sanitizeText(firstPageUrl, 500),
       referrer: sanitizeText(document.referrer || "", 500),
@@ -3470,6 +3496,35 @@ function getLeadPropertySummary(property) {
   };
 }
 
+function buildSuggestedPropertyPayload(property) {
+  if (property?.shown === false) {
+    return {
+      shown: false,
+      title: "Sin propiedad sugerida",
+      id: "",
+      url: "",
+    };
+  }
+
+  const hasProperty = Boolean(property && sanitizeText(property.title, 180));
+
+  if (!hasProperty) {
+    return {
+      shown: false,
+      title: "Sin propiedad sugerida",
+      id: "",
+      url: "",
+    };
+  }
+
+  return {
+    shown: true,
+    title: sanitizeText(property.title, 180),
+    id: sanitizeText(property.id, 80),
+    url: sanitizeText(property.url, 500),
+  };
+}
+
 function renderSuggestedProperties(properties = []) {
   if (!suggestedPropertiesSection || !suggestedPropertyGrid) {
     return;
@@ -3496,6 +3551,7 @@ function updateInventoryRecommendations(state = null) {
 
   if (currentLeadPayload) {
     currentLeadPayload.recommendedProperties = suggestedProperties.map(getLeadPropertySummary);
+    currentLeadPayload.suggestedProperty = buildSuggestedPropertyPayload(suggestedProperties[0]);
   }
 }
 
@@ -4488,6 +4544,7 @@ async function showFinish() {
   renderPropertyCards([]);
   if (currentLeadPayload) {
     currentLeadPayload.recommendedProperties = suggestedProperties.map(getLeadPropertySummary);
+    currentLeadPayload.suggestedProperty = buildSuggestedPropertyPayload(suggestedProperties[0]);
   }
   isFinished = true;
   trackFormCompleted(getCurrentRoute());
